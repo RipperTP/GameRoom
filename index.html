@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Signal Room Arcade</title>
+    <link rel="stylesheet" href="./css/styles.css">
+  </head>
+  <body>
+    <main class="shell">
+      <section class="hero">
+        <div class="hero-copy">
+          <p class="eyebrow">Signal Room Arcade</p>
+          <h1>Five cabinets. One sharp stage.</h1>
+          <p class="hero-text">
+            Pick a cabinet, throw the stage full screen, and start each run only when you hit Enter or Space.
+          </p>
+        </div>
+        <div class="hero-strip" aria-label="Arcade features">
+          <span>Snake</span>
+          <span>Meteor Run</span>
+          <span>Pulse Memory</span>
+          <span>Blackout</span>
+          <span>Cipher Chase</span>
+        </div>
+      </section>
+
+      <section class="arcade-layout">
+        <aside class="rail">
+          <section class="panel">
+            <p class="panel-label">Cabinet Select</p>
+            <div id="gamePicker" class="picker" aria-label="Game select"></div>
+          </section>
+
+          <section class="panel">
+            <p class="panel-label">Mode Dial</p>
+            <div id="modePicker" class="mode-picker" aria-label="Mode select"></div>
+          </section>
+
+          <section class="stats-grid" aria-label="Game stats">
+            <article class="stat-card">
+              <span id="scoreLabel">Score</span>
+              <strong id="scoreValue">0</strong>
+            </article>
+            <article class="stat-card">
+              <span id="bestLabel">Best</span>
+              <strong id="bestValue">0</strong>
+            </article>
+            <article class="stat-card">
+              <span id="modeLabel">Mode</span>
+              <strong id="modeValue">Classic</strong>
+            </article>
+            <article class="stat-card">
+              <span id="metaLabel">Tempo</span>
+              <strong id="metaValue">140 ms</strong>
+            </article>
+          </section>
+
+          <section class="panel panel-status">
+            <p class="panel-label">Run Feed</p>
+            <p id="statusText" class="status-copy">Loading arcade systems.</p>
+          </section>
+        </aside>
+
+        <section class="stage">
+          <header class="stage-header">
+            <div>
+              <p id="gameTag" class="stage-tag">Precision Grid</p>
+              <h2 id="gameTitle">Snake</h2>
+              <p id="gameSubtitle" class="stage-subtitle">Choose a cabinet, then press Enter or Space to bring the stage live.</p>
+            </div>
+            <div class="stage-actions">
+              <button id="pauseButton" type="button" class="button button-secondary">Pause</button>
+              <button id="fullscreenButton" type="button" class="button button-secondary">Full Screen</button>
+              <button id="restartButton" type="button" class="button button-primary">Restart</button>
+            </div>
+          </header>
+
+          <div class="canvas-shell">
+            <canvas id="gameCanvas" aria-label="Arcade game area"></canvas>
+          </div>
+
+          <footer class="stage-footer">
+            <section id="controlDeck" class="panel control-panel" aria-label="Touch controls">
+              <p class="panel-label">Touch Deck</p>
+              <div class="control-pad">
+                <button type="button" class="control control-up" data-control="up">Up</button>
+                <button type="button" class="control control-left" data-control="left">Left</button>
+                <button type="button" class="control control-down" data-control="down">Down</button>
+                <button type="button" class="control control-right" data-control="right">Right</button>
+              </div>
+            </section>
+
+            <section class="panel help-panel">
+              <p class="panel-label">Cabinet Notes</p>
+              <p id="controlHint" class="help-copy">Arrow keys or WASD move. Space pauses.</p>
+              <p id="gameNote" class="help-copy help-copy-muted">Classic Snake stays true to the original board rules.</p>
+            </section>
+          </footer>
+        </section>
+      </section>
+    </main>
+
+    <script type="module" src="./js/arcade.js"></script>
+  </body>
+</html>
