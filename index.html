@@ -3,25 +3,25 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Signal Room Arcade</title>
+    <title>LOOPCLUB — Five Neon Arcade Games</title>
     <link rel="stylesheet" href="./css/styles.css">
   </head>
   <body>
     <main class="shell">
       <section class="hero">
         <div class="hero-copy">
-          <p class="eyebrow">Signal Room Arcade</p>
-          <h1>Five cabinets. One sharp stage.</h1>
+          <p class="eyebrow">LOOPCLUB</p>
+          <h1>Five Neon Cabinets.</h1>
           <p class="hero-text">
-            Pick a cabinet, throw the stage full screen, and start each run only when you hit Enter or Space.
+            Members only. Pick your station, press Enter or Space, and keep the loop alive.
           </p>
         </div>
-        <div class="hero-strip" aria-label="Arcade features">
+        <div class="hero-strip" aria-label="Available arcade cabinets">
           <span>Snake</span>
-          <span>Meteor Run</span>
-          <span>Pulse Memory</span>
+          <span>Meteor</span>
+          <span>Memory</span>
           <span>Blackout</span>
-          <span>Cipher Chase</span>
+          <span>Cipher</span>
         </div>
       </section>
 
@@ -70,6 +70,7 @@
               <p id="gameSubtitle" class="stage-subtitle">Choose a cabinet, then press Enter or Space to bring the stage live.</p>
             </div>
             <div class="stage-actions">
+              <button id="muteButton" type="button" class="button button-secondary" title="Toggle sound">🔊</button>
               <button id="pauseButton" type="button" class="button button-secondary">Pause</button>
               <button id="fullscreenButton" type="button" class="button button-secondary">Full Screen</button>
               <button id="restartButton" type="button" class="button button-primary">Restart</button>
@@ -84,10 +85,10 @@
             <section id="controlDeck" class="panel control-panel" aria-label="Touch controls">
               <p class="panel-label">Touch Deck</p>
               <div class="control-pad">
-                <button type="button" class="control control-up" data-control="up">Up</button>
-                <button type="button" class="control control-left" data-control="left">Left</button>
-                <button type="button" class="control control-down" data-control="down">Down</button>
-                <button type="button" class="control control-right" data-control="right">Right</button>
+                <button type="button" class="control control-up" data-control="up">↑</button>
+                <button type="button" class="control control-left" data-control="left">←</button>
+                <button type="button" class="control control-down" data-control="down">↓</button>
+                <button type="button" class="control control-right" data-control="right">→</button>
               </div>
             </section>
 
@@ -101,6 +102,8 @@
       </section>
     </main>
 
+    <script type="module" src="./js/sfx.js"></script>
+    <script type="module" src="./js/juice.js"></script>
     <script type="module" src="./js/arcade.js"></script>
   </body>
 </html>

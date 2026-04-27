@@ -1,6 +1,8 @@
 import { advanceState, createInitialState, queueDirection } from "./snake-logic.js";
+import { SFX } from "./sfx.js";
+import { shake, pulse, burst, screenFlash, glitchTitle } from "./juice.js";
 
-const STORAGE_KEY = "ultra-arcade-scores-v1";
+const STORAGE_KEY = "ultra-arcade-scores-v1"; // Keep for backwards compatibility
 const CONTROL_KEY_TO_DIRECTION = {
   ArrowUp: "up",
   ArrowRight: "right",
@@ -154,6 +156,63 @@ const gameDefinitions = [
       }
     ],
     create: createCipherGame
+  },
+  {
+    id: "flappy",
+    kicker: "Tap & Fly",
+    title: "Flappy Bird",
+    summary: "Tap or click to flap and navigate through neon pipe gaps. Precision timing required.",
+    modes: [
+      {
+        id: "easy",
+        label: "Easy",
+        summary: "Wider gaps and slower scroll. Room to learn the rhythm."
+      },
+      {
+        id: "hard",
+        label: "Hard",
+        summary: "Tight gaps and fast-moving pipes. One mistake ends the run."
+      }
+    ],
+    create: createFlappyGame
+  },
+  {
+    id: "pong",
+    kicker: "Paddle Duel",
+    title: "Pong",
+    summary: "Classic tennis game. Challenge the computer AI and keep the rally alive.",
+    modes: [
+      {
+        id: "normal",
+        label: "Normal",
+        summary: "Balanced AI opponent. Standard court speed."
+      },
+      {
+        id: "hardcore",
+        label: "Hardcore",
+        summary: "Aggressive AI that learns from your moves. Fast-paced rallies."
+      }
+    ],
+    create: createPongGame
+  },
+  {
+    id: "platformer",
+    kicker: "Path Jumper",
+    title: "Platform Escape",
+    summary: "Jump across platforms, avoid hazards, and reach the exit. Keyboard precision test.",
+    modes: [
+      {
+        id: "sprint",
+        label: "Sprint",
+        summary: "Timed run: reach the exit before time expires. Fast-paced."
+      },
+      {
+        id: "survival",
+        label: "Survival",
+        summary: "No time limit but platforms collapse. Manage your path carefully."
+      }
+    ],
+    create: createPlatformerGame
   }
 ];
 
@@ -236,35 +295,49 @@ function strokeRoundedRect(ctx, x, y, width, height, radius, strokeStyle, lineWi
 }
 
 function drawStageBackdrop(ctx, colors) {
-  const background = ctx.createLinearGradient(0, 0, viewport.width, viewport.height);
-  background.addColorStop(0, colors.top);
-  background.addColorStop(1, colors.bottom);
   ctx.clearRect(0, 0, viewport.width, viewport.height);
-  ctx.fillStyle = background;
+  ctx.fillStyle = "#05060a";
   ctx.fillRect(0, 0, viewport.width, viewport.height);
 
-  ctx.globalAlpha = 0.22;
-  ctx.fillStyle = colors.glowA;
-  ctx.beginPath();
-  ctx.arc(viewport.width * 0.18, viewport.height * 0.16, viewport.width * 0.22, 0, Math.PI * 2);
-  ctx.fill();
+  // Subtle grid overlay (cyan @ 6%)
+  ctx.strokeStyle = "rgba(0, 240, 255, 0.06)";
+  ctx.lineWidth = 1;
+  const gridSize = 60;
+  for (let x = 0; x < viewport.width; x += gridSize) {
+    ctx.beginPath();
+    ctx.moveTo(x, 0);
+    ctx.lineTo(x, viewport.height);
+    ctx.stroke();
+  }
+  for (let y = 0; y < viewport.height; y += gridSize) {
+    ctx.beginPath();
+    ctx.moveTo(0, y);
+    ctx.lineTo(viewport.width, y);
+    ctx.stroke();
+  }
 
-  ctx.fillStyle = colors.glowB;
+  // Radial bloom in corner
+  ctx.globalAlpha = 0.12;
+  ctx.fillStyle = colors.accentGlow || "#00f0ff";
   ctx.beginPath();
-  ctx.arc(viewport.width * 0.82, viewport.height * 0.18, viewport.width * 0.18, 0, Math.PI * 2);
+  ctx.arc(viewport.width * 0.15, viewport.height * 0.15, viewport.width * 0.25, 0, Math.PI * 2);
   ctx.fill();
   ctx.globalAlpha = 1;
 
-  fillRoundedRect(
-    ctx,
-    22,
-    22,
-    viewport.width - 44,
-    viewport.height - 44,
-    30,
-    "rgba(5, 12, 20, 0.34)"
-  );
-  strokeRoundedRect(ctx, 22, 22, viewport.width - 44, viewport.height - 44, 30, "rgba(255, 255, 255, 0.08)");
+  // Border frame
+  ctx.strokeStyle = colors.accentColor || "#00f0ff";
+  ctx.lineWidth = 1;
+  ctx.strokeRect(24, 24, viewport.width - 48, viewport.height - 48);
+
+  // Scanlines
+  ctx.strokeStyle = "rgba(0, 240, 255, 0.04)";
+  ctx.lineWidth = 1;
+  for (let y = 0; y < viewport.height; y += 2) {
+    ctx.beginPath();
+    ctx.moveTo(0, y);
+    ctx.lineTo(viewport.width, y);
+    ctx.stroke();
+  }
 }
 
 function getGridMetrics(columns, rows, padding = 82) {
@@ -286,22 +359,41 @@ function getGridMetrics(columns, rows, padding = 82) {
 }
 
 function drawOverlayCard(ctx, title, subtitle, accent) {
-  const width = Math.min(380, viewport.width - 120);
-  const height = 156;
+  const width = Math.min(340, viewport.width - 80);
+  const height = 140;
   const x = Math.floor((viewport.width - width) / 2);
   const y = Math.floor((viewport.height - height) / 2);
 
-  fillRoundedRect(ctx, x, y, width, height, 24, "rgba(6, 12, 21, 0.8)");
-  strokeRoundedRect(ctx, x, y, width, height, 24, accent, 1.5);
+  // Card background with neon border
+  ctx.fillStyle = "rgba(11, 13, 20, 0.92)";
+  ctx.fillRect(x, y, width, height);
+  ctx.strokeStyle = accent;
+  ctx.lineWidth = 1.5;
+  ctx.strokeRect(x, y, width, height);
 
+  // Glitch effect: draw title 3 times with chromatic offset
   ctx.textAlign = "center";
-  ctx.fillStyle = "#ffffff";
-  ctx.font = '700 28px "Bahnschrift", "Trebuchet MS", sans-serif';
-  ctx.fillText(title, x + width / 2, y + 62);
+  ctx.font = '700 26px "Space Grotesk", sans-serif';
 
-  ctx.fillStyle = "rgba(228, 236, 245, 0.86)";
-  ctx.font = '500 15px "Aptos", "Segoe UI", sans-serif';
-  ctx.fillText(subtitle, x + width / 2, y + 96);
+  // Cyan layer
+  ctx.fillStyle = "rgba(0, 240, 255, 0.6)";
+  ctx.fillText(title, x + width / 2 + 1, y + 58);
+
+  // Magenta layer
+  ctx.fillStyle = "rgba(255, 43, 214, 0.6)";
+  ctx.fillText(title, x + width / 2 - 1, y + 58);
+
+  // White main text
+  ctx.fillStyle = "#ffffff";
+  ctx.shadowColor = accent;
+  ctx.shadowBlur = 12;
+  ctx.fillText(title, x + width / 2, y + 58);
+  ctx.shadowBlur = 0;
+
+  // Subtitle
+  ctx.fillStyle = "rgba(230, 236, 255, 0.8)";
+  ctx.font = '400 13px "Inter", sans-serif';
+  ctx.fillText(subtitle, x + width / 2, y + 94);
 }
 
 function resizeCanvas() {
@@ -409,6 +501,7 @@ function switchGame(gameId) {
   renderGamePicker();
   renderModePicker();
   renderHud();
+  SFX.select();
 }
 
 function switchMode(modeId) {
@@ -420,6 +513,7 @@ function switchMode(modeId) {
   lastFrameTime = performance.now();
   renderModePicker();
   renderHud();
+  SFX.click();
 }
 
 function handleButtonAction(action) {
@@ -429,10 +523,13 @@ function handleButtonAction(action) {
 
   if (action === "pause") {
     activeGame.togglePause();
+    SFX.pause();
   } else if (action === "restart") {
     activeGame.restart();
+    SFX.start();
   } else {
     activeGame.action(action);
+    SFX.click();
   }
 
   renderHud();
@@ -482,21 +579,33 @@ function frame(now) {
 function createSnakeGame(mode) {
   const config = {
     classic: {
-      accent: "#22c55e",
+      accent: "#00f0ff",
+      accentGlow: "rgba(0, 240, 255, 0.3)",
+      accentColor: "#00f0ff",
+      bodyColor: "#00f0ff",
+      foodColor: "#b6ff3c",
       gridSize: 18,
       minTickMs: 140,
       tickMs: 140,
       wrap: false
     },
     wrap: {
-      accent: "#38bdf8",
+      accent: "#00f0ff",
+      accentGlow: "rgba(0, 240, 255, 0.3)",
+      accentColor: "#00f0ff",
+      bodyColor: "#00f0ff",
+      foodColor: "#ffb547",
       gridSize: 18,
       minTickMs: 124,
       tickMs: 124,
       wrap: true
     },
     rush: {
-      accent: "#fb7185",
+      accent: "#ff2bd6",
+      accentGlow: "rgba(255, 43, 214, 0.3)",
+      accentColor: "#ff2bd6",
+      bodyColor: "#ff2bd6",
+      foodColor: "#b6ff3c",
       gridSize: 18,
       minTickMs: 72,
       speedGain: 4,
@@ -525,6 +634,7 @@ function createSnakeGame(mode) {
   function launch() {
     if (state.status === "ready") {
       state = { ...state, status: "running" };
+      SFX.start();
       return true;
     }
 
@@ -532,6 +642,7 @@ function createSnakeGame(mode) {
       state = createRunState("running");
       accumulator = 0;
       tickMs = config.tickMs;
+      SFX.start();
       return true;
     }
 
@@ -541,11 +652,13 @@ function createSnakeGame(mode) {
   function togglePause() {
     if (state.status === "running") {
       state = { ...state, status: "paused" };
+      SFX.pause();
       return true;
     }
 
     if (state.status === "paused") {
       state = { ...state, status: "running" };
+      SFX.start();
       return true;
     }
 
@@ -564,8 +677,24 @@ function createSnakeGame(mode) {
       const previousScore = state.score;
       state = advanceState(state, { wrap: config.wrap });
 
+      if (state.score > previousScore) {
+        SFX.score();
+        const statCard = document.querySelector(".stat-card");
+        if (statCard) {
+          shake(statCard, 140);
+          burst(statCard);
+        }
+      }
+
       if (config.speedGain && state.score > previousScore) {
         tickMs = Math.max(config.minTickMs, tickMs - config.speedGain);
+      }
+
+      if (state.status === "game-over") {
+        SFX.gameOver();
+        shake(stageElement, 200);
+      } else if (state.status === "won") {
+        SFX.score();
       }
 
       if (state.status !== "running") {
@@ -578,6 +707,7 @@ function createSnakeGame(mode) {
     const direction = CONTROL_KEY_TO_DIRECTION[event.key];
 
     if (direction) {
+      SFX.keyPress();
       state = queueDirection(state, direction);
       return true;
     }
@@ -599,19 +729,23 @@ function createSnakeGame(mode) {
 
   function render(ctx, time) {
     drawStageBackdrop(ctx, {
-      bottom: "#07141b",
-      glowA: "rgba(34, 197, 94, 1)",
-      glowB: "rgba(56, 189, 248, 1)",
-      top: "#081f25"
+      accentColor: config.accentColor,
+      accentGlow: config.accentGlow
     });
 
     const board = getGridMetrics(state.gridSize, state.gridSize, 88);
-    fillRoundedRect(ctx, board.x - 18, board.y - 18, board.width + 36, board.height + 36, 28, "rgba(8, 21, 35, 0.8)");
-    strokeRoundedRect(ctx, board.x - 18, board.y - 18, board.width + 36, board.height + 36, 28, "rgba(255, 255, 255, 0.08)");
-    fillRoundedRect(ctx, board.x, board.y, board.width, board.height, 18, "#071521");
 
-    ctx.strokeStyle = "rgba(125, 154, 180, 0.16)";
+    // Board background
+    ctx.fillStyle = "#05060a";
+    ctx.fillRect(board.x - 20, board.y - 20, board.width + 40, board.height + 40);
+    ctx.strokeStyle = config.accentColor;
     ctx.lineWidth = 1;
+    ctx.strokeRect(board.x - 20, board.y - 20, board.width + 40, board.height + 40);
+    ctx.fillRect(board.x, board.y, board.width, board.height);
+
+    // Grid lines (subtle cyan)
+    ctx.strokeStyle = `rgba(0, 240, 255, 0.08)`;
+    ctx.lineWidth = 0.5;
 
     for (let index = 0; index <= state.gridSize; index += 1) {
       const horizontal = board.y + index * board.cellSize + 0.5;
@@ -628,47 +762,61 @@ function createSnakeGame(mode) {
       ctx.stroke();
     }
 
+    // Food with neon glow
     if (state.food) {
-      const pulse = 0.84 + Math.sin(time * 6) * 0.12;
+      const pulseFactor = 0.84 + Math.sin(time * 6) * 0.12;
       const centerX = board.x + state.food.x * board.cellSize + board.cellSize / 2;
       const centerY = board.y + state.food.y * board.cellSize + board.cellSize / 2;
-      const radius = board.cellSize * 0.26 * pulse;
+      const radius = board.cellSize * 0.28 * pulseFactor;
 
-      ctx.fillStyle = "rgba(255, 122, 94, 0.16)";
+      ctx.fillStyle = `rgba(182, 255, 60, 0.2)`;
+      ctx.shadowColor = "#b6ff3c";
+      ctx.shadowBlur = 16;
       ctx.beginPath();
-      ctx.arc(centerX, centerY, radius * 2.25, 0, Math.PI * 2);
+      ctx.arc(centerX, centerY, radius * 1.8, 0, Math.PI * 2);
       ctx.fill();
 
-      ctx.fillStyle = "#ff7b5c";
+      ctx.fillStyle = config.foodColor;
+      ctx.shadowColor = config.foodColor;
+      ctx.shadowBlur = 12;
       ctx.beginPath();
       ctx.arc(centerX, centerY, radius, 0, Math.PI * 2);
       ctx.fill();
-    }
-
-    for (let index = state.snake.length - 1; index >= 0; index -= 1) {
-      const segment = state.snake[index];
-      const pad = index === 0 ? 3 : 4;
-      const x = board.x + segment.x * board.cellSize + pad;
-      const y = board.y + segment.y * board.cellSize + pad;
-      const size = board.cellSize - pad * 2;
-      const color = index === 0 ? "#88f2a8" : "#29c773";
-
-      ctx.shadowBlur = index === 0 ? 18 : 10;
-      ctx.shadowColor = "rgba(41, 199, 115, 0.32)";
-      fillRoundedRect(ctx, x, y, size, size, 10, color);
       ctx.shadowBlur = 0;
     }
 
-    ctx.fillStyle = "rgba(232, 240, 248, 0.9)";
-    ctx.font = '700 13px "Bahnschrift", "Trebuchet MS", sans-serif';
-    ctx.fillText(mode.label.toUpperCase(), board.x, board.y - 30);
+    // Snake with neon glow
+    for (let index = state.snake.length - 1; index >= 0; index -= 1) {
+      const segment = state.snake[index];
+      const pad = index === 0 ? 2 : 3;
+      const x = board.x + segment.x * board.cellSize + pad;
+      const y = board.y + segment.y * board.cellSize + pad;
+      const size = board.cellSize - pad * 2;
+      const isHead = index === 0;
+      const color = isHead ? config.bodyColor : config.accentColor;
 
+      ctx.fillStyle = color;
+      ctx.shadowColor = color;
+      ctx.shadowBlur = isHead ? 20 : 12;
+      ctx.fillRect(x, y, size, size);
+      ctx.shadowBlur = 0;
+    }
+
+    // Mode label
+    ctx.fillStyle = config.accentColor;
+    ctx.font = '600 12px "JetBrains Mono", monospace';
+    ctx.shadowColor = config.accentColor;
+    ctx.shadowBlur = 8;
+    ctx.fillText(mode.label.toUpperCase(), board.x, board.y - 10);
+    ctx.shadowBlur = 0;
+
+    // Status overlays
     if (state.status === "ready") {
-      drawOverlayCard(ctx, "Ready", "Press Enter or Space to start the run.", config.accent);
+      drawOverlayCard(ctx, "Ready", "Press Enter or Space to start.", config.accent);
     } else if (state.status === "paused") {
-      drawOverlayCard(ctx, "Paused", "Tap pause again or press Space to resume.", config.accent);
+      drawOverlayCard(ctx, "Paused", "Press Space to resume.", config.accent);
     } else if (state.status === "game-over") {
-      drawOverlayCard(ctx, "Run Ended", "Press Enter or Space to restart.", config.accent);
+      drawOverlayCard(ctx, "Run Ended", "Press Enter to restart.", config.accent);
     } else if (state.status === "won") {
       drawOverlayCard(ctx, "Perfect Clear", "You filled the entire grid.", config.accent);
     }
@@ -730,14 +878,22 @@ function createSnakeGame(mode) {
 function createDodgeGame(mode) {
   const config = {
     cruise: {
-      accent: "#38bdf8",
+      accent: "#00f0ff",
+      accentColor: "#00f0ff",
+      accentGlow: "rgba(0, 240, 255, 0.3)",
+      hazardColor: "#ff2bd6",
+      playerColor: "#00f0ff",
       baseTickMs: 176,
       maxHazards: 4,
       minHazards: 2,
       minTickMs: 106
     },
     storm: {
-      accent: "#f97316",
+      accent: "#ff2bd6",
+      accentColor: "#ff2bd6",
+      accentGlow: "rgba(255, 43, 214, 0.3)",
+      hazardColor: "#ff3355",
+      playerColor: "#b6ff3c",
       baseTickMs: 148,
       maxHazards: 5,
       minHazards: 3,
@@ -770,6 +926,7 @@ function createDodgeGame(mode) {
   function launch() {
     if (state.status === "ready") {
       state = { ...state, status: "running" };
+      SFX.start();
       return true;
     }
 
@@ -777,6 +934,7 @@ function createDodgeGame(mode) {
       accumulator = 0;
       tickMs = config.baseTickMs;
       state = createRunState("running");
+      SFX.start();
       return true;
     }
 
@@ -786,11 +944,13 @@ function createDodgeGame(mode) {
   function togglePause() {
     if (state.status === "running") {
       state = { ...state, status: "paused" };
+      SFX.pause();
       return true;
     }
 
     if (state.status === "paused") {
       state = { ...state, status: "running" };
+      SFX.start();
       return true;
     }
 
@@ -868,10 +1028,12 @@ function createDodgeGame(mode) {
 
   function keydown(event) {
     if (event.key === "ArrowLeft" || event.key === "a" || event.key === "A") {
+      SFX.keyPress();
       return move(-1);
     }
 
     if (event.key === "ArrowRight" || event.key === "d" || event.key === "D") {
+      SFX.keyPress();
       return move(1);
     }
 
@@ -892,26 +1054,29 @@ function createDodgeGame(mode) {
 
   function render(ctx) {
     drawStageBackdrop(ctx, {
-      bottom: "#08111f",
-      glowA: "rgba(56, 189, 248, 1)",
-      glowB: "rgba(249, 115, 22, 1)",
-      top: "#10223a"
+      accentColor: config.accentColor,
+      accentGlow: config.accentGlow
     });
 
     const board = getGridMetrics(columns, rows, 92);
-    fillRoundedRect(ctx, board.x - 18, board.y - 18, board.width + 36, board.height + 36, 28, "rgba(7, 17, 29, 0.82)");
-    strokeRoundedRect(ctx, board.x - 18, board.y - 18, board.width + 36, board.height + 36, 28, "rgba(255, 255, 255, 0.08)");
-    fillRoundedRect(ctx, board.x, board.y, board.width, board.height, 20, "#071422");
+    ctx.fillStyle = "#05060a";
+    ctx.fillRect(board.x - 20, board.y - 20, board.width + 40, board.height + 40);
+    ctx.strokeStyle = config.accentColor;
+    ctx.lineWidth = 1;
+    ctx.strokeRect(board.x - 20, board.y - 20, board.width + 40, board.height + 40);
+    ctx.fillRect(board.x, board.y, board.width, board.height);
 
+    // Lane stripes with accent color
     for (let column = 0; column < columns; column += 1) {
       const x = board.x + column * board.cellSize;
-      const stripe = column % 2 === 0 ? "rgba(255, 255, 255, 0.03)" : "rgba(255, 255, 255, 0.015)";
-      fillRoundedRect(ctx, x + 2, board.y + 2, board.cellSize - 4, board.height - 4, 12, stripe);
+      const stripe = column % 2 === 0 ? "rgba(0, 240, 255, 0.04)" : "rgba(0, 240, 255, 0.02)";
+      ctx.fillStyle = stripe;
+      ctx.fillRect(x, board.y, board.cellSize, board.height);
     }
 
-    ctx.strokeStyle = "rgba(130, 158, 184, 0.12)";
-    ctx.lineWidth = 1;
-
+    // Grid lines
+    ctx.strokeStyle = "rgba(0, 240, 255, 0.08)";
+    ctx.lineWidth = 0.5;
     for (let row = 1; row < rows; row += 1) {
       const y = board.y + row * board.cellSize + 0.5;
       ctx.beginPath();
@@ -920,21 +1085,24 @@ function createDodgeGame(mode) {
       ctx.stroke();
     }
 
+    // Hazards with neon glow
     for (const hazard of state.hazards) {
-      const x = board.x + hazard.x * board.cellSize + 6;
-      const y = board.y + hazard.y * board.cellSize + 6;
-      const size = board.cellSize - 12;
-      ctx.shadowBlur = 18;
-      ctx.shadowColor = "rgba(249, 115, 22, 0.45)";
-      fillRoundedRect(ctx, x, y, size, size, 10, "#ff8f3d");
+      const x = board.x + hazard.x * board.cellSize + 4;
+      const y = board.y + hazard.y * board.cellSize + 4;
+      const size = board.cellSize - 8;
+      ctx.fillStyle = config.hazardColor;
+      ctx.shadowColor = config.hazardColor;
+      ctx.shadowBlur = 16;
+      ctx.fillRect(x, y, size, size);
       ctx.shadowBlur = 0;
     }
 
+    // Player with neon glow
     const playerY = board.y + (rows - 1) * board.cellSize + 6;
     const playerX = board.x + state.playerX * board.cellSize + board.cellSize / 2;
-    ctx.fillStyle = "#8be9ff";
-    ctx.shadowBlur = 22;
-    ctx.shadowColor = "rgba(56, 189, 248, 0.5)";
+    ctx.fillStyle = config.playerColor;
+    ctx.shadowBlur = 20;
+    ctx.shadowColor = config.playerColor;
     ctx.beginPath();
     ctx.moveTo(playerX, playerY + 4);
     ctx.lineTo(playerX - board.cellSize * 0.28, playerY + board.cellSize - 6);
@@ -943,9 +1111,13 @@ function createDodgeGame(mode) {
     ctx.fill();
     ctx.shadowBlur = 0;
 
-    ctx.fillStyle = "rgba(232, 240, 248, 0.9)";
-    ctx.font = '700 13px "Bahnschrift", "Trebuchet MS", sans-serif';
-    ctx.fillText(mode.label.toUpperCase(), board.x, board.y - 30);
+    // Mode label
+    ctx.fillStyle = config.accentColor;
+    ctx.font = '600 12px "JetBrains Mono", monospace';
+    ctx.shadowColor = config.accentColor;
+    ctx.shadowBlur = 8;
+    ctx.fillText(mode.label.toUpperCase(), board.x, board.y - 10);
+    ctx.shadowBlur = 0;
 
     if (state.status === "ready") {
       drawOverlayCard(ctx, "Ready", "Press Enter or Space to launch the run.", config.accent);
@@ -1916,6 +2088,7 @@ function createCipherGame(mode) {
     const direction = CONTROL_KEY_TO_DIRECTION[event.key];
 
     if (direction) {
+      SFX.keyPress();
       return setDirection(direction);
     }
 
@@ -2060,6 +2233,630 @@ function createCipherGame(mode) {
     pointerdown() {
       return false;
     },
+    render,
+    restart,
+    togglePause,
+    update
+  };
+}
+
+function createFlappyGame(mode) {
+  const config = {
+    easy: {
+      accent: "#00f0ff",
+      accentColor: "#00f0ff",
+      accentGlow: "rgba(0, 240, 255, 0.3)",
+      gravity: 0.4,
+      flapPower: 8,
+      pipeGap: 140,
+      pipeSpeed: 180,
+      pipeFreq: 2000
+    },
+    hard: {
+      accent: "#ff2bd6",
+      accentColor: "#ff2bd6",
+      accentGlow: "rgba(255, 43, 214, 0.3)",
+      gravity: 0.5,
+      flapPower: 7,
+      pipeGap: 100,
+      pipeSpeed: 240,
+      pipeFreq: 1600
+    }
+  }[mode.id];
+
+  const width = viewport.width;
+  const height = viewport.height;
+  const birdX = width * 0.2;
+  const birdSize = 16;
+  const pipeWidth = 60;
+  const minPipeHeight = 60;
+
+  function createRunState(status = "ready") {
+    return {
+      birdY: height / 2,
+      birdVY: 0,
+      pipes: [],
+      score: 0,
+      status,
+      nextPipeTime: config.pipeFreq
+    };
+  }
+
+  let state = createRunState();
+  let gameTime = 0;
+
+  function restart() {
+    state = createRunState();
+    gameTime = 0;
+  }
+
+  function launch() {
+    if (state.status === "ready") {
+      state = { ...state, status: "running" };
+      SFX.start();
+      return true;
+    }
+    if (state.status === "game-over") {
+      state = createRunState("running");
+      gameTime = 0;
+      SFX.start();
+      return true;
+    }
+    return false;
+  }
+
+  function togglePause() {
+    if (state.status === "running") {
+      state = { ...state, status: "paused" };
+      SFX.pause();
+      return true;
+    }
+    if (state.status === "paused") {
+      state = { ...state, status: "running" };
+      SFX.start();
+      return true;
+    }
+    return false;
+  }
+
+  function flap() {
+    if (state.status === "running") {
+      state = { ...state, birdVY: -config.flapPower };
+      SFX.ping();
+      return true;
+    }
+    return false;
+  }
+
+  function update(deltaMs) {
+    if (state.status !== "running") return;
+
+    gameTime += deltaMs;
+    const deltaS = deltaMs / 1000;
+    let nextBirdY = state.birdY + state.birdVY * deltaS;
+    state.birdVY += config.gravity;
+
+    let nextPipes = state.pipes
+      .map(p => ({ ...p, x: p.x - config.pipeSpeed * deltaS }))
+      .filter(p => p.x > -pipeWidth);
+
+    let nextScore = state.score;
+    for (const pipe of nextPipes) {
+      if (pipe.x < birdX && pipe.x + pipeWidth > birdX && !pipe.scored) {
+        nextScore++;
+        pipe.scored = true;
+        SFX.scoreSmall();
+      }
+    }
+
+    if (gameTime > state.nextPipeTime) {
+      const gapTop = randomInt(minPipeHeight, height - minPipeHeight - config.pipeGap);
+      nextPipes.push({
+        x: width,
+        gapTop,
+        gapBottom: gapTop + config.pipeGap,
+        scored: false
+      });
+      gameTime = 0;
+    }
+
+    let nextStatus = state.status;
+    if (nextBirdY + birdSize > height || nextBirdY < 0) {
+      nextStatus = "game-over";
+      SFX.gameOver();
+    } else {
+      for (const pipe of nextPipes) {
+        if (birdX + birdSize > pipe.x && birdX < pipe.x + pipeWidth) {
+          if (state.birdY < pipe.gapTop || state.birdY + birdSize > pipe.gapBottom) {
+            nextStatus = "game-over";
+            SFX.gameOver();
+          }
+        }
+      }
+    }
+
+    state = {
+      ...state,
+      birdY: nextBirdY,
+      birdVY: state.birdVY,
+      pipes: nextPipes,
+      score: nextScore,
+      status: nextStatus
+    };
+  }
+
+  function keydown(event) {
+    if (event.code === "Space" || event.key === " ") {
+      if (state.status === "ready" || state.status === "game-over") {
+        return launch();
+      }
+      return flap();
+    }
+    return false;
+  }
+
+  function render(ctx) {
+    drawStageBackdrop(ctx, {
+      accentColor: config.accentColor,
+      accentGlow: config.accentGlow
+    });
+
+    for (const pipe of state.pipes) {
+      ctx.fillStyle = config.accentColor;
+      ctx.shadowColor = config.accentColor;
+      ctx.shadowBlur = 12;
+      ctx.fillRect(pipe.x, 0, pipeWidth, pipe.gapTop);
+      ctx.fillRect(pipe.x, pipe.gapBottom, pipeWidth, height - pipe.gapBottom);
+      ctx.shadowBlur = 0;
+    }
+
+    const birdColor = config.accentColor;
+    ctx.fillStyle = birdColor;
+    ctx.shadowColor = birdColor;
+    ctx.shadowBlur = 16;
+    ctx.beginPath();
+    ctx.arc(birdX, state.birdY, birdSize, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.shadowBlur = 0;
+
+    if (state.status === "ready") {
+      drawOverlayCard(ctx, "Ready", "Press Space to flap and start.", config.accent);
+    } else if (state.status === "paused") {
+      drawOverlayCard(ctx, "Paused", "Press Space to resume.", config.accent);
+    } else if (state.status === "game-over") {
+      drawOverlayCard(ctx, "Collision", "Press Space to retry.", config.accent);
+    }
+  }
+
+  return {
+    action() { return false; },
+    getMeta() {
+      return {
+        canPause: state.status === "running" || state.status === "paused",
+        controlHint: "Press Space or tap to flap and navigate gaps.",
+        controls: { up: { enabled: false, label: "" }, down: { enabled: false, label: "" }, left: { enabled: false, label: "" }, right: { enabled: false, label: "" } },
+        controlPadHidden: true,
+        isPaused: state.status === "paused",
+        metricLabel: "Best",
+        metricValue: String(syncBest(activeGameId, activeModeId, state.score)),
+        noteText: mode.summary,
+        score: state.score,
+        scoreLabel: "Pipes",
+        statusText: state.status === "ready" ? "Press Space to launch." : state.status === "game-over" ? "Hit a pipe or boundary." : "Keep rhythm and dodge gaps."
+      };
+    },
+    keydown,
+    pointerdown() { return flap(); },
+    render,
+    restart,
+    togglePause,
+    update
+  };
+}
+
+function createPongGame(mode) {
+  const config = {
+    normal: {
+      accent: "#00f0ff",
+      accentColor: "#00f0ff",
+      accentGlow: "rgba(0, 240, 255, 0.3)",
+      ballSpeed: 240,
+      paddleSpeed: 320,
+      aiDelay: 0.1
+    },
+    hardcore: {
+      accent: "#ff2bd6",
+      accentColor: "#ff2bd6",
+      accentGlow: "rgba(255, 43, 214, 0.3)",
+      ballSpeed: 300,
+      paddleSpeed: 400,
+      aiDelay: 0.04
+    }
+  }[mode.id];
+
+  const width = viewport.width;
+  const height = viewport.height;
+  const paddleHeight = 80;
+  const paddleWidth = 12;
+  const ballSize = 8;
+
+  function createRunState(status = "ready") {
+    return {
+      ball: {
+        x: width / 2,
+        y: height / 2,
+        vx: (Math.random() > 0.5 ? 1 : -1) * config.ballSpeed * 0.5,
+        vy: (Math.random() - 0.5) * config.ballSpeed * 0.5
+      },
+      playerY: height / 2 - paddleHeight / 2,
+      aiY: height / 2 - paddleHeight / 2,
+      playerScore: 0,
+      aiScore: 0,
+      status,
+      aiTarget: height / 2
+    };
+  }
+
+  let state = createRunState();
+
+  function restart() {
+    state = createRunState();
+  }
+
+  function launch() {
+    if (state.status === "ready" || state.status === "game-over") {
+      state = { ...state, status: "running" };
+      SFX.start();
+      return true;
+    }
+    return false;
+  }
+
+  function togglePause() {
+    if (state.status === "running") {
+      state = { ...state, status: "paused" };
+      SFX.pause();
+      return true;
+    }
+    if (state.status === "paused") {
+      state = { ...state, status: "running" };
+      SFX.start();
+      return true;
+    }
+    return false;
+  }
+
+  function update(deltaMs) {
+    if (state.status !== "running") return;
+
+    const deltaS = deltaMs / 1000;
+    let nextBall = {
+      ...state.ball,
+      x: state.ball.x + state.ball.vx * deltaS,
+      y: state.ball.y + state.ball.vy * deltaS
+    };
+
+    if (nextBall.y - ballSize < 0 || nextBall.y + ballSize > height) {
+      nextBall.vy *= -1;
+      nextBall.y = clamp(nextBall.y, ballSize, height - ballSize);
+    }
+
+    let nextPlayerScore = state.playerScore;
+    let nextAiScore = state.aiScore;
+
+    if (nextBall.x - ballSize < paddleWidth && nextBall.y > state.playerY && nextBall.y < state.playerY + paddleHeight && state.ball.x > paddleWidth) {
+      nextBall.vx *= -1.05;
+      nextBall.x = paddleWidth + ballSize;
+      SFX.ping();
+    }
+
+    if (nextBall.x + ballSize > width - paddleWidth && nextBall.y > state.aiY && nextBall.y < state.aiY + paddleHeight && state.ball.x < width - paddleWidth) {
+      nextBall.vx *= -1.05;
+      nextBall.x = width - paddleWidth - ballSize;
+      SFX.ping();
+    }
+
+    if (nextBall.x < 0) {
+      nextAiScore++;
+      nextBall = createRunState("running").ball;
+    }
+    if (nextBall.x > width) {
+      nextPlayerScore++;
+      nextBall = createRunState("running").ball;
+    }
+
+    let nextPlayerY = state.playerY;
+    let nextAiY = state.aiY;
+
+    const aiErrorMargin = mode.id === "hardcore" ? 20 : 40;
+    if (Math.random() > config.aiDelay) {
+      const target = nextBall.y + randomInt(-aiErrorMargin, aiErrorMargin);
+      nextAiY = clamp(state.aiY + (target - (state.aiY + paddleHeight / 2)) * 0.08, 0, height - paddleHeight);
+    }
+
+    state = {
+      ...state,
+      ball: nextBall,
+      playerScore: nextPlayerScore,
+      aiScore: nextAiScore,
+      playerY: nextPlayerY,
+      aiY: nextAiY,
+      status: nextPlayerScore >= 11 || nextAiScore >= 11 ? "game-over" : "running"
+    };
+  }
+
+  function keydown(event) {
+    if (event.key === "ArrowUp" || event.key === "w" || event.key === "W") {
+      state = { ...state, playerY: clamp(state.playerY - 40, 0, height - paddleHeight) };
+      return true;
+    }
+    if (event.key === "ArrowDown" || event.key === "s" || event.key === "S") {
+      state = { ...state, playerY: clamp(state.playerY + 40, 0, height - paddleHeight) };
+      return true;
+    }
+    if (event.code === "Space") {
+      return launch() || togglePause();
+    }
+    return false;
+  }
+
+  function render(ctx) {
+    drawStageBackdrop(ctx, {
+      accentColor: config.accentColor,
+      accentGlow: config.accentGlow
+    });
+
+    ctx.fillStyle = config.accentColor;
+    ctx.shadowColor = config.accentColor;
+    ctx.shadowBlur = 12;
+    ctx.fillRect(0, state.playerY, paddleWidth, paddleHeight);
+    ctx.fillRect(width - paddleWidth, state.aiY, paddleWidth, paddleHeight);
+    ctx.beginPath();
+    ctx.arc(state.ball.x, state.ball.y, ballSize, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.shadowBlur = 0;
+
+    ctx.fillStyle = config.accentColor;
+    ctx.font = '700 48px "Space Grotesk"';
+    ctx.textAlign = "center";
+    ctx.fillText(state.playerScore, width / 4, 80);
+    ctx.fillText(state.aiScore, (width * 3) / 4, 80);
+
+    if (state.status === "ready") {
+      drawOverlayCard(ctx, "Ready", "Arrow keys to move. Space to start.", config.accent);
+    } else if (state.status === "paused") {
+      drawOverlayCard(ctx, "Paused", "Space to resume.", config.accent);
+    } else if (state.status === "game-over") {
+      drawOverlayCard(ctx, "Match Over", "First to 11 wins. Space to replay.", config.accent);
+    }
+  }
+
+  return {
+    action() { return false; },
+    getMeta() {
+      return {
+        canPause: state.status === "running" || state.status === "paused",
+        controlHint: "Up/Down or W/S to move paddle. Space to play.",
+        controls: { up: { enabled: true, label: "Up" }, down: { enabled: true, label: "Down" }, left: { enabled: false, label: "" }, right: { enabled: false, label: "" } },
+        controlPadHidden: false,
+        isPaused: state.status === "paused",
+        metricLabel: "Opponent",
+        metricValue: String(state.aiScore),
+        noteText: mode.summary,
+        score: state.playerScore,
+        scoreLabel: "You",
+        statusText: state.status === "ready" ? "Press Space to start the match." : state.status === "game-over" ? "Match complete. Rematch?" : "Keep the rally alive."
+      };
+    },
+    keydown,
+    pointerdown() { return false; },
+    render,
+    restart,
+    togglePause,
+    update
+  };
+}
+
+function createPlatformerGame(mode) {
+  const config = {
+    sprint: {
+      accent: "#b6ff3c",
+      accentColor: "#b6ff3c",
+      accentGlow: "rgba(182, 255, 60, 0.3)",
+      timeLimit: 60000,
+      platformCount: 8,
+      gravity: 0.6
+    },
+    survival: {
+      accent: "#ffb547",
+      accentColor: "#ffb547",
+      accentGlow: "rgba(255, 181, 71, 0.3)",
+      timeLimit: null,
+      platformCount: 12,
+      gravity: 0.5
+    }
+  }[mode.id];
+
+  const width = viewport.width;
+  const height = viewport.height;
+  const playerSize = 14;
+  const platformHeight = 10;
+
+  function generatePlatforms() {
+    const platforms = [];
+    for (let i = 0; i < config.platformCount; i++) {
+      platforms.push({
+        x: randomInt(20, width - 80),
+        y: height - 40 - i * (height / config.platformCount),
+        width: randomInt(60, 100),
+        active: true
+      });
+    }
+    platforms.push({ x: 0, y: height - 20, width, active: true });
+    return platforms;
+  }
+
+  function createRunState(status = "ready") {
+    return {
+      playerX: width / 2,
+      playerY: height - 50,
+      playerVX: 0,
+      playerVY: 0,
+      platforms: generatePlatforms(),
+      score: 0,
+      status,
+      time: config.timeLimit || 0,
+      onGround: true
+    };
+  }
+
+  let state = createRunState();
+  let keysPressed = {};
+
+  function restart() {
+    state = createRunState();
+    keysPressed = {};
+  }
+
+  function launch() {
+    if (state.status === "ready" || state.status === "game-over") {
+      state = { ...state, status: "running" };
+      SFX.start();
+      return true;
+    }
+    return false;
+  }
+
+  function togglePause() {
+    if (state.status === "running") {
+      state = { ...state, status: "paused" };
+      SFX.pause();
+      return true;
+    }
+    if (state.status === "paused") {
+      state = { ...state, status: "running" };
+      SFX.start();
+      return true;
+    }
+    return false;
+  }
+
+  function update(deltaMs) {
+    if (state.status !== "running") return;
+
+    const deltaS = deltaMs / 1000;
+    let nextX = state.playerX;
+    if (keysPressed["a"] || keysPressed["A"] || keysPressed["ArrowLeft"]) nextX -= 250 * deltaS;
+    if (keysPressed["d"] || keysPressed["D"] || keysPressed["ArrowRight"]) nextX += 250 * deltaS;
+    nextX = clamp(nextX, 0, width - playerSize);
+
+    let nextVY = state.playerVY + config.gravity;
+    let nextY = state.playerY + nextVY * deltaS;
+    let onGround = false;
+
+    for (const platform of state.platforms) {
+      if (platform.active && state.playerVY >= 0 && nextY + playerSize >= platform.y && nextY + playerSize <= platform.y + platformHeight + 5 && nextX + playerSize > platform.x && nextX < platform.x + platform.width) {
+        nextY = platform.y - playerSize;
+        nextVY = 0;
+        onGround = true;
+        if (keysPressed["w"] || keysPressed["W"] || keysPressed[" "]) {
+          nextVY = -15;
+          SFX.ping();
+        }
+      }
+    }
+
+    if (nextY > height) {
+      state = { ...state, status: "game-over" };
+      SFX.gameOver();
+      return;
+    }
+
+    if (config.timeLimit) {
+      state = { ...state, time: state.time - deltaMs };
+      if (state.time <= 0) {
+        state = { ...state, status: "game-over" };
+        SFX.gameOver();
+        return;
+      }
+    }
+
+    state = {
+      ...state,
+      playerX: nextX,
+      playerY: nextY,
+      playerVY: nextVY,
+      onGround,
+      score: Math.max(state.score, Math.floor((height - nextY) / 10))
+    };
+  }
+
+  function keydown(event) {
+    keysPressed[event.key] = true;
+    if (event.code === "Space") {
+      if (state.status === "ready" || state.status === "game-over") {
+        return launch();
+      }
+      return togglePause();
+    }
+    return false;
+  }
+
+  function keyup(event) {
+    keysPressed[event.key] = false;
+  }
+
+  document.addEventListener("keyup", keyup);
+
+  function render(ctx) {
+    drawStageBackdrop(ctx, {
+      accentColor: config.accentColor,
+      accentGlow: config.accentGlow
+    });
+
+    ctx.fillStyle = config.accentColor;
+    ctx.shadowColor = config.accentColor;
+    ctx.shadowBlur = 12;
+
+    for (const platform of state.platforms) {
+      ctx.globalAlpha = platform.active ? 1 : 0.3;
+      ctx.fillRect(platform.x, platform.y, platform.width, platformHeight);
+    }
+    ctx.globalAlpha = 1;
+
+    ctx.beginPath();
+    ctx.arc(state.playerX + playerSize / 2, state.playerY + playerSize / 2, playerSize, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.shadowBlur = 0;
+
+    if (state.status === "ready") {
+      drawOverlayCard(ctx, "Ready", "WASD or Arrows to move. Space to jump.", config.accent);
+    } else if (state.status === "paused") {
+      drawOverlayCard(ctx, "Paused", "Space to resume.", config.accent);
+    } else if (state.status === "game-over") {
+      drawOverlayCard(ctx, "Game Over", "Space to try again.", config.accent);
+    }
+  }
+
+  return {
+    action() { return false; },
+    getMeta() {
+      return {
+        canPause: state.status === "running" || state.status === "paused",
+        controlHint: "WASD or Arrows to move. Space to jump.",
+        controls: { up: { enabled: true, label: "Jump" }, down: { enabled: false, label: "" }, left: { enabled: true, label: "Left" }, right: { enabled: true, label: "Right" } },
+        controlPadHidden: false,
+        isPaused: state.status === "paused",
+        metricLabel: config.timeLimit ? "Time" : "Height",
+        metricValue: config.timeLimit ? `${Math.max(0, Math.floor(state.time / 1000))}s` : `${state.score}m`,
+        noteText: mode.summary,
+        score: state.score,
+        scoreLabel: "Reached",
+        statusText: state.status === "ready" ? "Reach the top. Space to start." : state.status === "game-over" ? "Fell too far. Try again?" : "Jump to the next platform."
+      };
+    },
+    keydown,
+    pointerdown() { return false; },
     render,
     restart,
     togglePause,
