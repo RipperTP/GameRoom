@@ -54,6 +54,9 @@ const gameNote = document.querySelector("#gameNote");
 const controlDeck = document.querySelector("#controlDeck");
 const controlButtons = Array.from(document.querySelectorAll("[data-control]"));
 const stageElement = document.querySelector(".stage");
+const fsPrevGame = document.querySelector("#fsPrevGame");
+const fsNextGame = document.querySelector("#fsNextGame");
+const fsExitButton = document.querySelector("#fsExitButton");
 const creditsValue = document.querySelector("#creditsValue");
 const marqueeElement = document.querySelector(".crt-marquee");
 const crtScreen = document.querySelector(".crt-screen");
@@ -3243,6 +3246,24 @@ restartButton.addEventListener("click", () => {
 if (fullscreenButton) {
   fullscreenButton.addEventListener("click", () => {
     toggleFullscreen();
+  });
+}
+
+if (fsExitButton) {
+  fsExitButton.addEventListener("click", () => toggleFullscreen());
+}
+
+if (fsPrevGame) {
+  fsPrevGame.addEventListener("click", () => {
+    const idx = gameDefinitions.findIndex((d) => d.id === activeGameId);
+    switchGame(gameDefinitions[(idx + gameDefinitions.length - 1) % gameDefinitions.length].id);
+  });
+}
+
+if (fsNextGame) {
+  fsNextGame.addEventListener("click", () => {
+    const idx = gameDefinitions.findIndex((d) => d.id === activeGameId);
+    switchGame(gameDefinitions[(idx + 1) % gameDefinitions.length].id);
   });
 }
 

@@ -726,75 +726,129 @@ a:focus-visible {
 
 /* ------------------------------------------------------------------
    Fullscreen — native (standard + webkit) and CSS fallback for iOS
+   Layout: compact action bar → HUD → canvas (1fr) → touch controls
 ------------------------------------------------------------------- */
 
-/* Native fullscreen: the stage element itself becomes fullscreen */
+/* Shared base for all fullscreen modes */
 .stage:fullscreen,
-.stage:-webkit-full-screen {
-  width: 100vw;
-  height: 100vh;
-  padding: 14px 18px;
+.stage:-webkit-full-screen,
+body.is-css-fullscreen .stage {
+  padding: 10px 14px;
   border-radius: 0;
   border: none;
-  grid-template-rows: auto auto minmax(0, 1fr);
+  gap: 8px;
+  /* 4 rows: compact header | HUD | canvas | touch controls */
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
   overflow: hidden;
   background: var(--bg);
 }
 
-.stage:fullscreen .stage-sub,
-.stage:-webkit-full-screen .stage-sub,
-.stage:fullscreen .stage-foot,
-.stage:-webkit-full-screen .stage-foot {
-  display: none;
+/* Native fullscreen must fill the screen */
+.stage:fullscreen,
+.stage:-webkit-full-screen {
+  width: 100vw;
+  height: 100vh;
 }
 
-.stage:fullscreen .crt,
-.stage:-webkit-full-screen .crt {
-  min-height: 0;
-  height: 100%;
-}
-
-.stage:fullscreen #gameCanvas,
-.stage:-webkit-full-screen #gameCanvas {
-  width: min(100%, calc(100vh - 220px));
-  max-height: calc(100vh - 220px);
-}
-
-/* CSS fullscreen fallback: used on iOS Safari where the Fullscreen API
-   is absent. The stage breaks out of the normal document flow and covers
-   the whole viewport with position:fixed. */
+/* CSS fullscreen: break out of document flow (iOS, unsupported browsers) */
 body.is-css-fullscreen {
   overflow: hidden;
 }
-
 body.is-css-fullscreen .stage {
   position: fixed;
   inset: 0;
   z-index: 50;
   width: 100%;
   height: 100dvh;
-  padding: 14px 18px;
-  border-radius: 0;
-  border: none;
-  grid-template-rows: auto auto minmax(0, 1fr);
-  overflow: hidden;
-  background: var(--bg);
 }
 
+/* --- What gets hidden in fullscreen --- */
+
+/* Hide the title block (kicker + h1 + subtitle) — saves ~100px vertically */
+.stage:fullscreen .stage-id,
+.stage:-webkit-full-screen .stage-id,
+body.is-css-fullscreen .stage .stage-id { display: none; }
+
+/* Hide the inline subtitle and the notes panel */
+.stage:fullscreen .stage-sub,
+.stage:-webkit-full-screen .stage-sub,
 body.is-css-fullscreen .stage .stage-sub,
-body.is-css-fullscreen .stage .stage-foot {
-  display: none;
+.stage:fullscreen .notes,
+.stage:-webkit-full-screen .notes,
+body.is-css-fullscreen .stage .notes { display: none; }
+
+/* --- Compact header: stage-side spans full width --- */
+.stage:fullscreen .stage-head,
+.stage:-webkit-full-screen .stage-head,
+body.is-css-fullscreen .stage .stage-head { align-items: center; }
+
+.stage:fullscreen .stage-side,
+.stage:-webkit-full-screen .stage-side,
+body.is-css-fullscreen .stage .stage-side {
+  width: 100%;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
 }
 
+.stage:fullscreen .stage-actions,
+.stage:-webkit-full-screen .stage-actions,
+body.is-css-fullscreen .stage .stage-actions { flex-wrap: nowrap; }
+
+/* --- Touch controls: show the control deck in fullscreen --- */
+.stage:fullscreen .stage-foot,
+.stage:-webkit-full-screen .stage-foot,
+body.is-css-fullscreen .stage .stage-foot {
+  display: grid;
+  grid-template-columns: 1fr; /* notes are hidden, deck takes full width */
+  padding: 0;
+}
+
+/* --- Canvas: fill remaining space --- */
+.stage:fullscreen .crt,
+.stage:-webkit-full-screen .crt,
 body.is-css-fullscreen .stage .crt {
   min-height: 0;
   height: 100%;
 }
 
-body.is-css-fullscreen #gameCanvas {
-  width: min(100%, calc(100dvh - 220px));
-  max-height: calc(100dvh - 220px);
+.stage:fullscreen #gameCanvas,
+.stage:-webkit-full-screen #gameCanvas {
+  width: min(100%, calc(100vh - 180px));
+  max-height: calc(100vh - 180px);
 }
+
+body.is-css-fullscreen #gameCanvas {
+  width: min(100%, calc(100dvh - 180px));
+  max-height: calc(100dvh - 180px);
+}
+
+/* Landscape phones: less overhead since touch controls are smaller relative to width */
+@media (orientation: landscape) and (max-height: 520px) {
+  .stage:fullscreen .stage-foot,
+  .stage:-webkit-full-screen .stage-foot,
+  body.is-css-fullscreen .stage .stage-foot { display: none; }
+
+  .stage:fullscreen #gameCanvas,
+  .stage:-webkit-full-screen #gameCanvas {
+    width: min(100%, calc(100vh - 100px));
+    max-height: calc(100vh - 100px);
+  }
+
+  body.is-css-fullscreen #gameCanvas {
+    width: min(100%, calc(100dvh - 100px));
+    max-height: calc(100dvh - 100px);
+  }
+}
+
+/* --- fs-only: buttons visible only in fullscreen --- */
+.fs-only { display: none !important; }
+
+.stage:fullscreen .fs-only,
+.stage:-webkit-full-screen .fs-only,
+body.is-css-fullscreen .fs-only { display: inline-flex !important; }
 
 /* ------------------------------------------------------------------
    Animation
