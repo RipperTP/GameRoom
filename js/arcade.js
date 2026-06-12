@@ -35,7 +35,6 @@ const MEMORY_KEY_TO_INDEX = {
 const canvas = document.querySelector("#gameCanvas");
 const gamePicker = document.querySelector("#gamePicker");
 const modePicker = document.querySelector("#modePicker");
-const pauseButton = document.querySelector("#pauseButton");
 const fullscreenButton = document.querySelector("#fullscreenButton");
 const restartButton = document.querySelector("#restartButton");
 const scoreLabel = document.querySelector("#scoreLabel");
@@ -545,9 +544,6 @@ function renderHud() {
   statusText.textContent = meta.statusText;
   controlHint.textContent = meta.controlHint;
   gameNote.textContent = meta.noteText;
-  pauseButton.textContent = meta.isPaused ? "Resume" : "Pause";
-  pauseButton.disabled = !meta.canPause;
-
   controlDeck.classList.toggle("is-hidden", Boolean(meta.controlPadHidden));
 
   for (const button of controlButtons) {
@@ -3233,10 +3229,6 @@ document.addEventListener("visibilitychange", () => {
       activeGame.togglePause();
     }
   }
-});
-
-pauseButton.addEventListener("click", () => {
-  handleButtonAction("pause");
 });
 
 restartButton.addEventListener("click", () => {

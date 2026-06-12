@@ -737,8 +737,8 @@ body.is-css-fullscreen .stage {
   border-radius: 0;
   border: none;
   gap: 8px;
-  /* 4 rows: compact header | HUD | canvas | touch controls */
-  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  /* 3 rows: compact header | HUD | canvas */
+  grid-template-rows: auto auto minmax(0, 1fr);
   overflow: hidden;
   background: var(--bg);
 }
@@ -797,13 +797,11 @@ body.is-css-fullscreen .stage .stage-side {
 .stage:-webkit-full-screen .stage-actions,
 body.is-css-fullscreen .stage .stage-actions { flex-wrap: nowrap; }
 
-/* --- Touch controls: show the control deck in fullscreen --- */
+/* --- Touch controls: hidden in fullscreen — more canvas space --- */
 .stage:fullscreen .stage-foot,
 .stage:-webkit-full-screen .stage-foot,
 body.is-css-fullscreen .stage .stage-foot {
-  display: grid;
-  grid-template-columns: 1fr; /* notes are hidden, deck takes full width */
-  padding: 0;
+  display: none;
 }
 
 /* --- Canvas: fill remaining space --- */
@@ -816,30 +814,26 @@ body.is-css-fullscreen .stage .crt {
 
 .stage:fullscreen #gameCanvas,
 .stage:-webkit-full-screen #gameCanvas {
-  width: min(100%, calc(100vh - 180px));
-  max-height: calc(100vh - 180px);
+  width: min(100%, calc(100vh - 120px));
+  max-height: calc(100vh - 120px);
 }
 
 body.is-css-fullscreen #gameCanvas {
-  width: min(100%, calc(100dvh - 180px));
-  max-height: calc(100dvh - 180px);
+  width: min(100%, calc(100dvh - 120px));
+  max-height: calc(100dvh - 120px);
 }
 
-/* Landscape phones: less overhead since touch controls are smaller relative to width */
+/* Landscape phones: tighter overhead */
 @media (orientation: landscape) and (max-height: 520px) {
-  .stage:fullscreen .stage-foot,
-  .stage:-webkit-full-screen .stage-foot,
-  body.is-css-fullscreen .stage .stage-foot { display: none; }
-
   .stage:fullscreen #gameCanvas,
   .stage:-webkit-full-screen #gameCanvas {
-    width: min(100%, calc(100vh - 100px));
-    max-height: calc(100vh - 100px);
+    width: min(100%, calc(100vh - 80px));
+    max-height: calc(100vh - 80px);
   }
 
   body.is-css-fullscreen #gameCanvas {
-    width: min(100%, calc(100dvh - 100px));
-    max-height: calc(100dvh - 100px);
+    width: min(100%, calc(100dvh - 80px));
+    max-height: calc(100dvh - 80px);
   }
 }
 
@@ -1012,10 +1006,15 @@ body.is-css-fullscreen .fs-only { display: inline-flex !important; }
 
   .control-pad {
     gap: 8px;
+    margin: 0 auto;
+  }
+
+  .stage-id {
+    display: none;
   }
 
   #gameCanvas {
-    max-height: calc(100svh - 260px);
+    max-height: calc(100svh - 320px);
   }
 
   .notes {
@@ -1028,6 +1027,8 @@ body.is-css-fullscreen .fs-only { display: inline-flex !important; }
 
   .deck {
     padding: 12px;
+    background: transparent;
+    border: none;
   }
 
   .foot-label {
