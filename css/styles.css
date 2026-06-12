@@ -52,6 +52,7 @@ body {
 button {
   font: inherit;
   cursor: pointer;
+  touch-action: manipulation;
 }
 
 button:focus-visible,
@@ -471,7 +472,9 @@ a:focus-visible {
   aspect-ratio: 1;
   max-height: calc(100vh - 290px);
   background: #050507;
-  touch-action: manipulation;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .crt-overlay {
@@ -674,8 +677,25 @@ a:focus-visible {
 }
 
 .initials-slots {
+  position: relative;
   display: flex;
   gap: 8px;
+}
+
+.initials-input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  cursor: text;
+  padding: 0;
+  border: none;
+  background: transparent;
+  font-size: 16px; /* prevents iOS auto-zoom on focus */
+  color: transparent;
+  caret-color: transparent;
+  z-index: 1;
 }
 
 .slot {
@@ -836,12 +856,19 @@ a:focus-visible {
   .cabinet-row {
     display: flex;
     overflow-x: auto;
+    scroll-snap-type: x mandatory;
+    -webkit-overflow-scrolling: touch;
     padding-bottom: 4px;
-    scrollbar-width: thin;
+    scrollbar-width: none;
+  }
+
+  .cabinet-row::-webkit-scrollbar {
+    display: none;
   }
 
   .cab {
-    flex: 0 0 132px;
+    flex: 0 0 120px;
+    scroll-snap-align: start;
   }
 
   .brand-sub {
@@ -850,6 +877,7 @@ a:focus-visible {
 
   .stage {
     padding: 12px;
+    gap: 10px;
   }
 
   .mode-tabs {
@@ -858,6 +886,7 @@ a:focus-visible {
 
   .mode-tabs button {
     flex: 1;
+    padding: 10px 8px;
   }
 
   .stage-actions {
@@ -866,5 +895,48 @@ a:focus-visible {
 
   .btn {
     flex: 1;
+    padding: 10px 12px;
+  }
+
+  .hud-cell {
+    padding: 10px 12px 8px;
+  }
+
+  .control {
+    aspect-ratio: 1;
+    min-width: 52px;
+    min-height: 52px;
+    font-size: 1rem;
+  }
+
+  .control-pad {
+    gap: 8px;
+  }
+
+  #gameCanvas {
+    max-height: calc(100svh - 260px);
+  }
+
+  .notes {
+    display: none;
+  }
+
+  .stage-foot {
+    padding: 0;
+  }
+
+  .deck {
+    padding: 12px;
+  }
+
+  .foot-label {
+    display: none;
+  }
+
+  .initials-card {
+    padding: 24px 20px;
+    min-width: 0;
+    width: calc(100vw - 40px);
+    max-width: 340px;
   }
 }

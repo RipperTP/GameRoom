@@ -60,6 +60,7 @@ const crtScreen = document.querySelector(".crt-screen");
 const initialsModal = document.querySelector("#initialsModal");
 const initialsScore = document.querySelector("#initialsScore");
 const initialsSlots = Array.from(document.querySelectorAll("#initialsModal .slot"));
+const initialsInputEl = document.querySelector("#initialsInput");
 
 const context = canvas.getContext("2d");
 const viewport = { width: 720, height: 720 };
@@ -291,6 +292,11 @@ function openInitials(score) {
   initialsModal.classList.remove("hidden");
   renderInitialsSlots();
   SFX.success();
+
+  if (initialsInputEl) {
+    initialsInputEl.value = "";
+    setTimeout(() => initialsInputEl.focus(), 60);
+  }
 }
 
 function closeInitials(save) {
@@ -308,26 +314,20 @@ function closeInitials(save) {
   initialsOpen = false;
   initialsChars = [];
   initialsModal.classList.add("hidden");
+  if (initialsInputEl) initialsInputEl.blur();
   renderGamePicker();
 }
 
 function handleInitialsKey(event) {
-  if (/^[a-zA-Z0-9]$/.test(event.key) && initialsChars.length < 3) {
-    initialsChars.push(event.key.toUpperCase());
-    SFX.keyPress();
-  } else if (event.key === "Backspace") {
-    initialsChars.pop();
-    SFX.click();
-  } else if (event.key === "Enter" && initialsChars.length > 0) {
+  if (event.key === "Enter" && initialsChars.length > 0) {
+    event.preventDefault();
     SFX.score();
     closeInitials(true);
-    return;
   } else if (event.key === "Escape") {
+    event.preventDefault();
     closeInitials(false);
-    return;
   }
-
-  renderInitialsSlots();
+  // Letters and Backspace are handled by the input element's "input" event.
 }
 
 function drawRoundedRectPath(ctx, x, y, width, height, radius) {
@@ -1890,6 +1890,16 @@ function createBlackoutGame(mode) {
     }
   }
 
+  function pointermoveBlackout(point) {
+    if (state.status !== "running") return false;
+    const board = getGridMetrics(20, 20, 92);
+    const scale = world.width / board.width;
+    const worldX = (point.x - board.x) * scale;
+    const halfW = config.paddleWidth / 2;
+    state = { ...state, paddleX: clamp(worldX, 80 + halfW, world.width - 80 - halfW) };
+    return true;
+  }
+
   return {
     action(control) {
       if (control === "left") {
@@ -1905,7 +1915,7 @@ function createBlackoutGame(mode) {
     getMeta() {
       return {
         canPause: state.status === "running" || state.status === "paused",
-        controlHint: "Use Left and Right or A and D. Enter or Space starts. Space pauses after launch.",
+        controlHint: "Drag finger on screen or use Left/Right to move paddle. Space starts.",
         controls: {
           down: { enabled: false, label: "Locked" },
           left: { enabled: true, label: "Left" },
@@ -1936,6 +1946,7 @@ function createBlackoutGame(mode) {
     pointerdown() {
       return false;
     },
+    pointermove: pointermoveBlackout,
     render,
     restart,
     togglePause,
@@ -3019,9 +3030,20 @@ function createPlatformerGame(mode) {
 
   return {
     action(control) {
-      if (control === "up" && state.status === "running") {
+      if (state.status !== "running") return false;
+      if (control === "up") {
         keysPressed["w"] = true;
-        setTimeout(() => { keysPressed["w"] = false; }, 120);
+        setTimeout(() => { keysPressed["w"] = false; }, 140);
+        return true;
+      }
+      if (control === "left") {
+        keysPressed["a"] = true;
+        setTimeout(() => { keysPressed["a"] = false; }, 160);
+        return true;
+      }
+      if (control === "right") {
+        keysPressed["d"] = true;
+        setTimeout(() => { keysPressed["d"] = false; }, 160);
         return true;
       }
       return false;
@@ -3052,26 +3074,39 @@ function createPlatformerGame(mode) {
   };
 }
 
+// ---- Canvas touch/pointer handling ----------------------------------------
+// Supports: tap-to-launch, swipe-to-steer (Snake/Cipher/Dodge/Platformer),
+// and continuous drag (Pong/Blackout via pointermove).
+
+let pointerGesture = null; // tracks active touch from canvas pointerdown
+
+function getCanvasPoint(event) {
+  const rect = canvas.getBoundingClientRect();
+  return { x: event.clientX - rect.left, y: event.clientY - rect.top };
+}
+
 canvas.addEventListener("pointerdown", (event) => {
-  if (!activeGame) {
+  if (!activeGame) return;
+
+  const point = getCanvasPoint(event);
+
+  // Games that handle tap immediately (Flappy flap, Memory tile tap)
+  if (activeGame.pointerdown(point)) {
+    event.preventDefault();
+    pointerGesture = null;
     return;
   }
 
-  const rect = canvas.getBoundingClientRect();
-  const point = {
-    x: event.clientX - rect.left,
-    y: event.clientY - rect.top
-  };
-
-  if (activeGame.pointerdown(point)) {
-    event.preventDefault();
-  }
-});
+  pointerGesture = { x: point.x, y: point.y, t: Date.now() };
+  event.preventDefault();
+}, { passive: false });
 
 document.addEventListener("keydown", (event) => {
   if (initialsOpen) {
     handleInitialsKey(event);
-    event.preventDefault();
+    // Don't blanket-prevent-default here; letters/backspace must reach the input element
+    // so the "input" event fires and initialsChars stays in sync. Enter/Escape are
+    // prevented inside handleInitialsKey itself.
     return;
   }
 
@@ -3114,15 +3149,54 @@ document.addEventListener("keyup", (event) => {
 });
 
 canvas.addEventListener("pointermove", (event) => {
-  if (!activeGame?.pointermove) {
-    return;
+  if (!activeGame) return;
+
+  const point = getCanvasPoint(event);
+
+  // Track movement for swipe vs drag disambiguation
+  if (pointerGesture) {
+    const dx = point.x - pointerGesture.x;
+    const dy = point.y - pointerGesture.y;
+    if (Math.hypot(dx, dy) > 8) pointerGesture.moved = true;
   }
 
-  const rect = canvas.getBoundingClientRect();
-  activeGame.pointermove({
-    x: event.clientX - rect.left,
-    y: event.clientY - rect.top
-  });
+  if (activeGame.pointermove) {
+    activeGame.pointermove(point);
+  }
+}, { passive: false });
+
+canvas.addEventListener("pointerup", (event) => {
+  if (!pointerGesture || !activeGame) { pointerGesture = null; return; }
+
+  const point = getCanvasPoint(event);
+  const dx = point.x - pointerGesture.x;
+  const dy = point.y - pointerGesture.y;
+  const dist = Math.hypot(dx, dy);
+  const elapsed = Date.now() - pointerGesture.t;
+  const wasMoved = pointerGesture.moved;
+  pointerGesture = null;
+  event.preventDefault();
+
+  const meta = activeGame.getMeta();
+  const isIdle = meta.status === "ready" || meta.status === "game-over" || meta.status === "won";
+
+  if (dist < 24 && elapsed < 500) {
+    // Tap → launch if idle (works for all games)
+    if (isIdle) {
+      activeGame.keydown({ code: "Space", key: " ", preventDefault: () => {} });
+    }
+  } else if (dist >= 28 && !activeGame.pointermove) {
+    // Swipe → direction action (only for games without a drag handler)
+    const dir = Math.abs(dx) > Math.abs(dy)
+      ? (dx > 0 ? "right" : "left")
+      : (dy > 0 ? "down" : "up");
+    activeGame.action(dir);
+    SFX.click();
+  }
+}, { passive: false });
+
+canvas.addEventListener("pointercancel", () => {
+  pointerGesture = null;
 });
 
 document.addEventListener("visibilitychange", () => {
@@ -3154,9 +3228,26 @@ if (fullscreenButton) {
 }
 
 for (const button of controlButtons) {
-  button.addEventListener("click", () => {
+  let holdTimer = null;
+
+  function fireControl() {
     handleButtonAction(button.dataset.control);
+  }
+
+  function stopHold() {
+    clearInterval(holdTimer);
+    holdTimer = null;
+  }
+
+  button.addEventListener("pointerdown", (event) => {
+    event.preventDefault();
+    fireControl();
+    holdTimer = setInterval(fireControl, 120);
   });
+
+  button.addEventListener("pointerup", stopHold);
+  button.addEventListener("pointerleave", stopHold);
+  button.addEventListener("pointercancel", stopHold);
 }
 
 window.addEventListener("resize", () => {
@@ -3167,6 +3258,33 @@ document.addEventListener("fullscreenchange", () => {
   updateFullscreenButton();
   resizeCanvas();
 });
+
+// Initials input: bridges mobile virtual keyboard → initialsChars.
+// On desktop the input is focused but characters also fire document keydown —
+// the input event here is the single source of truth for character state.
+if (initialsInputEl) {
+  initialsInputEl.addEventListener("input", () => {
+    if (!initialsOpen) return;
+    const cleaned = initialsInputEl.value.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 3);
+    initialsChars = cleaned.split("");
+    initialsInputEl.value = cleaned;
+    renderInitialsSlots();
+    if (initialsChars.length === 3) {
+      setTimeout(() => { if (initialsOpen) { SFX.score(); closeInitials(true); } }, 420);
+    }
+  });
+
+  initialsInputEl.addEventListener("keydown", (event) => {
+    if (event.key === "Enter" && initialsChars.length > 0) {
+      event.preventDefault();
+      SFX.score();
+      closeInitials(true);
+    } else if (event.key === "Escape") {
+      event.preventDefault();
+      closeInitials(false);
+    }
+  });
+}
 
 resizeCanvas();
 updateCreditsReadout();
