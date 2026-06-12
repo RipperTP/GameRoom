@@ -725,10 +725,12 @@ a:focus-visible {
 }
 
 /* ------------------------------------------------------------------
-   Fullscreen
+   Fullscreen — native (standard + webkit) and CSS fallback for iOS
 ------------------------------------------------------------------- */
 
-.stage:fullscreen {
+/* Native fullscreen: the stage element itself becomes fullscreen */
+.stage:fullscreen,
+.stage:-webkit-full-screen {
   width: 100vw;
   height: 100vh;
   padding: 14px 18px;
@@ -740,13 +742,58 @@ a:focus-visible {
 }
 
 .stage:fullscreen .stage-sub,
-.stage:fullscreen .stage-foot {
+.stage:-webkit-full-screen .stage-sub,
+.stage:fullscreen .stage-foot,
+.stage:-webkit-full-screen .stage-foot {
   display: none;
 }
 
-.stage:fullscreen #gameCanvas {
+.stage:fullscreen .crt,
+.stage:-webkit-full-screen .crt {
+  min-height: 0;
+  height: 100%;
+}
+
+.stage:fullscreen #gameCanvas,
+.stage:-webkit-full-screen #gameCanvas {
   width: min(100%, calc(100vh - 220px));
   max-height: calc(100vh - 220px);
+}
+
+/* CSS fullscreen fallback: used on iOS Safari where the Fullscreen API
+   is absent. The stage breaks out of the normal document flow and covers
+   the whole viewport with position:fixed. */
+body.is-css-fullscreen {
+  overflow: hidden;
+}
+
+body.is-css-fullscreen .stage {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  width: 100%;
+  height: 100dvh;
+  padding: 14px 18px;
+  border-radius: 0;
+  border: none;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  overflow: hidden;
+  background: var(--bg);
+}
+
+body.is-css-fullscreen .stage .stage-sub,
+body.is-css-fullscreen .stage .stage-foot {
+  display: none;
+}
+
+body.is-css-fullscreen .stage .crt {
+  min-height: 0;
+  height: 100%;
+}
+
+body.is-css-fullscreen #gameCanvas {
+  width: min(100%, calc(100dvh - 220px));
+  max-height: calc(100dvh - 220px);
 }
 
 /* ------------------------------------------------------------------

@@ -624,31 +624,54 @@ function handleButtonAction(action) {
   renderHud();
 }
 
-function isStageFullscreen() {
-  return document.fullscreenElement === stageElement;
+function isFullscreen() {
+  return !!(
+    document.fullscreenElement ||
+    document.webkitFullscreenElement ||
+    document.body.classList.contains("is-css-fullscreen")
+  );
 }
 
 function updateFullscreenButton() {
-  if (!fullscreenButton) {
-    return;
-  }
-
-  fullscreenButton.textContent = isStageFullscreen() ? "EXIT" : "FULL";
+  if (!fullscreenButton) return;
+  fullscreenButton.textContent = isFullscreen() ? "EXIT" : "FULL";
 }
 
 async function toggleFullscreen() {
-  if (!stageElement || !document.fullscreenEnabled) {
+  if (!stageElement) return;
+
+  if (isFullscreen()) {
+    // Exit — native first, then CSS fallback
+    document.body.classList.remove("is-css-fullscreen");
+    try {
+      if (document.fullscreenElement && document.exitFullscreen) {
+        await document.exitFullscreen();
+      } else if (document.webkitFullscreenElement && document.webkitExitFullscreen) {
+        document.webkitExitFullscreen();
+      }
+    } catch { /* ignore */ }
+    updateFullscreenButton();
+    requestAnimationFrame(resizeCanvas);
     return;
   }
 
+  // Enter — try native (standard then webkit), fall back to CSS
+  let nativeOk = false;
   try {
-    if (isStageFullscreen()) {
-      await document.exitFullscreen();
-    } else {
-      await stageElement.requestFullscreen();
+    if (stageElement.requestFullscreen) {
+      await stageElement.requestFullscreen({ navigationUI: "hide" });
+      nativeOk = true;
+    } else if (stageElement.webkitRequestFullscreen) {
+      stageElement.webkitRequestFullscreen();
+      nativeOk = true;
     }
-  } catch {
-    // Ignore fullscreen failures and leave the stage usable.
+  } catch { /* fall through */ }
+
+  if (!nativeOk) {
+    // iOS Safari and other non-supporting browsers: CSS overlay fullscreen
+    document.body.classList.add("is-css-fullscreen");
+    updateFullscreenButton();
+    requestAnimationFrame(resizeCanvas);
   }
 }
 
@@ -3218,10 +3241,6 @@ restartButton.addEventListener("click", () => {
 });
 
 if (fullscreenButton) {
-  if (!document.fullscreenEnabled) {
-    fullscreenButton.disabled = true;
-  }
-
   fullscreenButton.addEventListener("click", () => {
     toggleFullscreen();
   });
@@ -3255,6 +3274,11 @@ window.addEventListener("resize", () => {
 });
 
 document.addEventListener("fullscreenchange", () => {
+  updateFullscreenButton();
+  resizeCanvas();
+});
+
+document.addEventListener("webkitfullscreenchange", () => {
   updateFullscreenButton();
   resizeCanvas();
 });
