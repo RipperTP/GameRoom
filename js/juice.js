@@ -39,10 +39,10 @@ export function burst(element) {
     particle.style.width = "6px";
     particle.style.height = "6px";
     particle.style.borderRadius = "50%";
-    particle.style.backgroundColor = "var(--neon-lime)";
+    particle.style.backgroundColor = "var(--acc)";
     particle.style.pointerEvents = "none";
     particle.style.zIndex = "9999";
-    particle.style.boxShadow = "0 0 8px var(--neon-lime)";
+    particle.style.boxShadow = "0 0 8px var(--acc)";
     particle.style.setProperty("--tx", vx + "px");
     particle.style.setProperty("--ty", vy + "px");
     particle.style.animation = `burst 600ms ease-out forwards`;

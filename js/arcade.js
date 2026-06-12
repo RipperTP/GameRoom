@@ -1,8 +1,10 @@
-import { advanceState, createInitialState, queueDirection } from "./snake-logic.js";
-import { SFX } from "./sfx.js";
-import { shake, pulse, burst, screenFlash, glitchTitle } from "./juice.js";
+import { advanceState, createInitialState, queueDirection, DIRECTION_VECTORS } from "./snake-logic.js";
+import { SFX, toggleMute } from "./sfx.js";
+import { shake, burst } from "./juice.js";
 
-const STORAGE_KEY = "ultra-arcade-scores-v1"; // Keep for backwards compatibility
+const LEGACY_SCORE_KEY = "ultra-arcade-scores-v1";
+const HISCORE_KEY = "loopclub-hiscores-v1";
+const CREDITS_KEY = "loopclub-credits-v1";
 const CONTROL_KEY_TO_DIRECTION = {
   ArrowUp: "up",
   ArrowRight: "right",
@@ -39,6 +41,7 @@ const restartButton = document.querySelector("#restartButton");
 const scoreLabel = document.querySelector("#scoreLabel");
 const scoreValue = document.querySelector("#scoreValue");
 const bestValue = document.querySelector("#bestValue");
+const bestInitials = document.querySelector("#bestInitials");
 const modeValue = document.querySelector("#modeValue");
 const metaLabel = document.querySelector("#metaLabel");
 const metaValue = document.querySelector("#metaValue");
@@ -51,166 +54,121 @@ const gameNote = document.querySelector("#gameNote");
 const controlDeck = document.querySelector("#controlDeck");
 const controlButtons = Array.from(document.querySelectorAll("[data-control]"));
 const stageElement = document.querySelector(".stage");
+const creditsValue = document.querySelector("#creditsValue");
+const marqueeElement = document.querySelector(".crt-marquee");
+const crtScreen = document.querySelector(".crt-screen");
+const initialsModal = document.querySelector("#initialsModal");
+const initialsScore = document.querySelector("#initialsScore");
+const initialsSlots = Array.from(document.querySelectorAll("#initialsModal .slot"));
 
 const context = canvas.getContext("2d");
 const viewport = { width: 720, height: 720 };
-const scores = loadScores();
+const hiscores = loadHiscores();
+let credits = loadCredits();
 
 const gameDefinitions = [
   {
     id: "snake",
-    kicker: "Precision Grid",
+    accent: "#46f06e",
+    kicker: "Grid Runner",
     title: "Snake",
-    summary: "The classic loop, now rendered on a crisp canvas with tuned movement modes.",
+    summary: "Eat. Grow. Don't clip your own tail.",
+    icon: '<svg viewBox="0 0 16 16" aria-hidden="true"><rect x="3" y="2" width="10" height="2"/><rect x="3" y="4" width="2" height="3"/><rect x="3" y="7" width="10" height="2"/><rect x="11" y="9" width="2" height="3"/><rect x="3" y="12" width="10" height="2"/></svg>',
     modes: [
-      {
-        id: "classic",
-        label: "Classic",
-        summary: "Solid walls, steady pace, faithful arcade pressure."
-      },
-      {
-        id: "wrap",
-        label: "Wrap",
-        summary: "Slip through edges and attack the board from both sides."
-      },
-      {
-        id: "rush",
-        label: "Rush",
-        summary: "Every meal accelerates the tempo until the board gets vicious."
-      }
+      { id: "classic", label: "Classic", summary: "Solid walls, steady pace. The original board rules." },
+      { id: "wrap", label: "Wrap", summary: "Edges are tunnels — exit one side, enter the other." },
+      { id: "rush", label: "Rush", summary: "Every meal speeds the clock. It gets vicious." }
     ],
     create: createSnakeGame
   },
   {
     id: "dodge",
+    accent: "#ff6a3d",
     kicker: "Lane Survival",
-    title: "Meteor Dodge",
-    summary: "Slide through falling traffic and hold your line as the storm thickens.",
+    title: "Meteor",
+    summary: "Slide through falling rock and hold your line.",
+    icon: '<svg viewBox="0 0 16 16" aria-hidden="true"><rect x="3" y="2" width="2" height="2"/><rect x="9" y="1" width="2" height="2"/><rect x="12" y="5" width="2" height="2"/><rect x="6" y="6" width="2" height="2"/><rect x="7" y="10" width="2" height="3"/><rect x="5" y="13" width="6" height="2"/></svg>',
     modes: [
-      {
-        id: "cruise",
-        label: "Cruise",
-        summary: "Measured pacing with room to read the lanes."
-      },
-      {
-        id: "storm",
-        label: "Storm",
-        summary: "Denser waves and faster impact windows."
-      }
+      { id: "cruise", label: "Cruise", summary: "Measured pacing with room to read the lanes." },
+      { id: "storm", label: "Storm", summary: "Denser waves, faster impact windows." }
     ],
     create: createDodgeGame
   },
   {
     id: "memory",
+    accent: "#c08bff",
     kicker: "Pattern Recall",
-    title: "Pulse Memory",
-    summary: "Watch the sequence, then replay it cleanly with keys or taps.",
+    title: "Pulse",
+    summary: "Watch the flash. Play it back. No mistakes.",
+    icon: '<svg viewBox="0 0 16 16" aria-hidden="true"><rect x="1" y="1" width="4" height="4"/><rect x="11" y="1" width="4" height="4"/><rect x="6" y="6" width="4" height="4"/><rect x="1" y="11" width="4" height="4"/><rect x="11" y="11" width="4" height="4"/></svg>',
     modes: [
-      {
-        id: "focus",
-        label: "Focus",
-        summary: "Measured flashes and a calmer rhythm for longer chains."
-      },
-      {
-        id: "rush",
-        label: "Rush",
-        summary: "Sharper reveal windows for high-speed recall."
-      }
+      { id: "focus", label: "Focus", summary: "Calmer rhythm and longer reveal windows." },
+      { id: "rush", label: "Rush", summary: "Sharp reveal windows for high-speed recall." }
     ],
     create: createMemoryGame
   },
   {
     id: "blackout",
+    accent: "#e9e9ee",
     kicker: "Black Cabinet",
     title: "Blackout",
-    summary: "Minimal black stage. Keep the ball alive, clip targets, and build a rally.",
+    summary: "One ball, one paddle, no color. Keep the rally.",
+    icon: '<svg viewBox="0 0 16 16" aria-hidden="true"><rect x="2" y="2" width="4" height="2"/><rect x="7" y="2" width="4" height="2"/><rect x="12" y="2" width="2" height="2"/><rect x="7" y="8" width="2" height="2"/><rect x="4" y="13" width="8" height="2"/></svg>',
     modes: [
-      {
-        id: "night",
-        label: "Night",
-        summary: "Balanced speed with a wider paddle and clean monochrome pacing."
-      },
-      {
-        id: "hardcut",
-        label: "Hard Cut",
-        summary: "Faster rebounds, tighter paddle, less room for mistakes."
-      }
+      { id: "night", label: "Night", summary: "Wider paddle, balanced speed, clean monochrome pacing." },
+      { id: "hardcut", label: "Hard Cut", summary: "Faster rebounds, tighter paddle, no room for error." }
     ],
     create: createBlackoutGame
   },
   {
     id: "cipher",
+    accent: "#7dd3fc",
     kicker: "Dark Grid",
-    title: "Cipher Chase",
-    summary: "Collect signal nodes, route around hunters, and hold the line on a stripped black grid.",
+    title: "Cipher",
+    summary: "Grab the nodes. Outrun the hunters.",
+    icon: '<svg viewBox="0 0 16 16" aria-hidden="true"><rect x="7" y="2" width="2" height="2"/><rect x="5" y="4" width="6" height="2"/><rect x="3" y="6" width="10" height="3"/><rect x="5" y="9" width="6" height="2"/><rect x="7" y="11" width="2" height="2"/></svg>',
     modes: [
-      {
-        id: "trace",
-        label: "Trace",
-        summary: "One hunter to open, with a measured ramp as the grid heats up."
-      },
-      {
-        id: "panic",
-        label: "Panic",
-        summary: "Starts with two hunters and climbs harder with every pickup."
-      }
+      { id: "trace", label: "Trace", summary: "One hunter to open, with a measured ramp." },
+      { id: "panic", label: "Panic", summary: "Two hunters from the start, climbing fast." }
     ],
     create: createCipherGame
   },
   {
     id: "flappy",
+    accent: "#ffd23f",
     kicker: "Tap & Fly",
-    title: "Flappy Bird",
-    summary: "Tap or click to flap and navigate through neon pipe gaps. Precision timing required.",
+    title: "Flappy",
+    summary: "One button. Gravity is the enemy.",
+    icon: '<svg viewBox="0 0 16 16" aria-hidden="true"><rect x="5" y="5" width="6" height="5"/><rect x="3" y="7" width="2" height="2"/><rect x="11" y="7" width="3" height="2"/><rect x="7" y="3" width="3" height="2"/><rect x="8" y="6" width="2" height="1"/></svg>',
     modes: [
-      {
-        id: "easy",
-        label: "Easy",
-        summary: "Wider gaps and slower scroll. Room to learn the rhythm."
-      },
-      {
-        id: "hard",
-        label: "Hard",
-        summary: "Tight gaps and fast-moving pipes. One mistake ends the run."
-      }
+      { id: "easy", label: "Easy", summary: "Wider gaps, slower scroll. Learn the rhythm." },
+      { id: "hard", label: "Hard", summary: "Tight gaps, fast pipes. One mistake ends it." }
     ],
     create: createFlappyGame
   },
   {
     id: "pong",
+    accent: "#ff4f9a",
     kicker: "Paddle Duel",
     title: "Pong",
-    summary: "Classic tennis game. Challenge the computer AI and keep the rally alive.",
+    summary: "First to eleven against the machine.",
+    icon: '<svg viewBox="0 0 16 16" aria-hidden="true"><rect x="1" y="5" width="2" height="6"/><rect x="13" y="5" width="2" height="6"/><rect x="7" y="7" width="2" height="2"/><rect x="7" y="1" width="1" height="2"/><rect x="7" y="13" width="1" height="2"/></svg>',
     modes: [
-      {
-        id: "normal",
-        label: "Normal",
-        summary: "Balanced AI opponent. Standard court speed."
-      },
-      {
-        id: "hardcore",
-        label: "Hardcore",
-        summary: "Aggressive AI that learns from your moves. Fast-paced rallies."
-      }
+      { id: "normal", label: "Normal", summary: "A fair opponent at standard court speed." },
+      { id: "hardcore", label: "Hardcore", summary: "Sharper tracking, faster rallies." }
     ],
     create: createPongGame
   },
   {
     id: "platformer",
+    accent: "#a6ff3d",
     kicker: "Path Jumper",
-    title: "Platform Escape",
-    summary: "Jump across platforms, avoid hazards, and reach the exit. Keyboard precision test.",
+    title: "Ascent",
+    summary: "Climb the platforms. Don't look down.",
+    icon: '<svg viewBox="0 0 16 16" aria-hidden="true"><rect x="1" y="12" width="5" height="2"/><rect x="6" y="8" width="5" height="2"/><rect x="11" y="4" width="4" height="2"/><rect x="12" y="1" width="2" height="2"/></svg>',
     modes: [
-      {
-        id: "sprint",
-        label: "Sprint",
-        summary: "Timed run: reach the exit before time expires. Fast-paced."
-      },
-      {
-        id: "survival",
-        label: "Survival",
-        summary: "No time limit but platforms collapse. Manage your path carefully."
-      }
+      { id: "sprint", label: "Sprint", summary: "Sixty seconds on the clock. Climb fast." },
+      { id: "survival", label: "Survival", summary: "No clock. Just don't fall." }
     ],
     create: createPlatformerGame
   }
@@ -220,6 +178,10 @@ let activeGameId = "snake";
 let activeModeId = "classic";
 let activeGame = null;
 let lastFrameTime = performance.now();
+let lastStatus = null;
+let runStartBest = 0;
+let initialsOpen = false;
+let initialsChars = [];
 
 function clamp(value, min, max) {
   return Math.min(Math.max(value, min), max);
@@ -229,20 +191,53 @@ function randomInt(min, max) {
   return min + Math.floor(Math.random() * (max - min + 1));
 }
 
-function loadScores() {
+function loadHiscores() {
+  let store = {};
+
   try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
-    return raw ? JSON.parse(raw) : {};
+    const raw = window.localStorage.getItem(HISCORE_KEY);
+    store = raw ? JSON.parse(raw) : {};
   } catch {
-    return {};
+    store = {};
+  }
+
+  // Fold legacy plain-number scores into the new {score, initials} shape.
+  try {
+    const legacy = JSON.parse(window.localStorage.getItem(LEGACY_SCORE_KEY) ?? "{}");
+
+    for (const [key, score] of Object.entries(legacy)) {
+      if (typeof score === "number" && score > (store[key]?.score ?? 0)) {
+        store[key] = { score, initials: store[key]?.initials ?? "---" };
+      }
+    }
+  } catch {
+    // Legacy data unreadable; start clean.
+  }
+
+  return store;
+}
+
+function saveHiscores() {
+  try {
+    window.localStorage.setItem(HISCORE_KEY, JSON.stringify(hiscores));
+  } catch {
+    // Ignore storage failures and keep the arcade playable.
   }
 }
 
-function saveScores() {
+function loadCredits() {
   try {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(scores));
+    return Math.max(0, Number(window.localStorage.getItem(CREDITS_KEY)) || 0);
   } catch {
-    // Ignore storage failures and keep the arcade playable.
+    return 0;
+  }
+}
+
+function saveCredits() {
+  try {
+    window.localStorage.setItem(CREDITS_KEY, String(credits));
+  } catch {
+    // Ignore storage failures.
   }
 }
 
@@ -258,16 +253,81 @@ function getScoreKey(gameId, modeId) {
   return `${gameId}:${modeId}`;
 }
 
+function getBestEntry(gameId, modeId) {
+  return hiscores[getScoreKey(gameId, modeId)] ?? { score: 0, initials: "---" };
+}
+
 function syncBest(gameId, modeId, score) {
   const key = getScoreKey(gameId, modeId);
-  const currentBest = scores[key] ?? 0;
+  const entry = hiscores[key] ?? (hiscores[key] = { score: 0, initials: "---" });
 
-  if (score > currentBest) {
-    scores[key] = score;
-    saveScores();
+  if (score > entry.score) {
+    entry.score = score;
+    saveHiscores();
   }
 
-  return scores[key] ?? 0;
+  return entry;
+}
+
+function formatScore(value, digits = 6) {
+  return String(Math.max(0, Math.floor(value))).padStart(digits, "0");
+}
+
+function updateCreditsReadout() {
+  creditsValue.textContent = formatScore(credits, 2);
+}
+
+function renderInitialsSlots() {
+  initialsSlots.forEach((slot, index) => {
+    slot.textContent = initialsChars[index] ?? "";
+    slot.classList.toggle("is-current", initialsOpen && index === Math.min(initialsChars.length, 2));
+  });
+}
+
+function openInitials(score) {
+  initialsOpen = true;
+  initialsChars = [];
+  initialsScore.textContent = formatScore(score);
+  initialsModal.classList.remove("hidden");
+  renderInitialsSlots();
+  SFX.success();
+}
+
+function closeInitials(save) {
+  if (!initialsOpen) {
+    return;
+  }
+
+  if (save && initialsChars.length > 0) {
+    const key = getScoreKey(activeGameId, activeModeId);
+    const entry = hiscores[key] ?? (hiscores[key] = { score: 0, initials: "---" });
+    entry.initials = initialsChars.join("").padEnd(3, "-");
+    saveHiscores();
+  }
+
+  initialsOpen = false;
+  initialsChars = [];
+  initialsModal.classList.add("hidden");
+  renderGamePicker();
+}
+
+function handleInitialsKey(event) {
+  if (/^[a-zA-Z0-9]$/.test(event.key) && initialsChars.length < 3) {
+    initialsChars.push(event.key.toUpperCase());
+    SFX.keyPress();
+  } else if (event.key === "Backspace") {
+    initialsChars.pop();
+    SFX.click();
+  } else if (event.key === "Enter" && initialsChars.length > 0) {
+    SFX.score();
+    closeInitials(true);
+    return;
+  } else if (event.key === "Escape") {
+    closeInitials(false);
+    return;
+  }
+
+  renderInitialsSlots();
 }
 
 function drawRoundedRectPath(ctx, x, y, width, height, radius) {
@@ -294,50 +354,49 @@ function strokeRoundedRect(ctx, x, y, width, height, radius, strokeStyle, lineWi
   ctx.stroke();
 }
 
-function drawStageBackdrop(ctx, colors) {
+function drawStageBackdrop(ctx, colors = {}) {
+  const accent = colors.accentColor || colors.accent || getDefinition().accent;
+
   ctx.clearRect(0, 0, viewport.width, viewport.height);
-  ctx.fillStyle = "#05060a";
+  ctx.fillStyle = "#050507";
   ctx.fillRect(0, 0, viewport.width, viewport.height);
 
-  // Subtle grid overlay (cyan @ 6%)
-  ctx.strokeStyle = "rgba(0, 240, 255, 0.06)";
-  ctx.lineWidth = 1;
-  const gridSize = 60;
-  for (let x = 0; x < viewport.width; x += gridSize) {
-    ctx.beginPath();
-    ctx.moveTo(x, 0);
-    ctx.lineTo(x, viewport.height);
-    ctx.stroke();
-  }
-  for (let y = 0; y < viewport.height; y += gridSize) {
-    ctx.beginPath();
-    ctx.moveTo(0, y);
-    ctx.lineTo(viewport.width, y);
-    ctx.stroke();
+  // Faint dot matrix instead of grid lines — quieter texture.
+  ctx.fillStyle = "rgba(255, 255, 255, 0.045)";
+  const dotGap = 36;
+  for (let x = dotGap; x < viewport.width; x += dotGap) {
+    for (let y = dotGap; y < viewport.height; y += dotGap) {
+      ctx.fillRect(x, y, 1.5, 1.5);
+    }
   }
 
-  // Radial bloom in corner
-  ctx.globalAlpha = 0.12;
-  ctx.fillStyle = colors.accentGlow || "#00f0ff";
+  // Vignette.
+  const vignette = ctx.createRadialGradient(
+    viewport.width / 2, viewport.height / 2, viewport.height * 0.34,
+    viewport.width / 2, viewport.height / 2, viewport.height * 0.74
+  );
+  vignette.addColorStop(0, "rgba(0, 0, 0, 0)");
+  vignette.addColorStop(1, "rgba(0, 0, 0, 0.5)");
+  ctx.fillStyle = vignette;
+  ctx.fillRect(0, 0, viewport.width, viewport.height);
+
+  // Accent corner ticks.
+  const inset = 18;
+  const tick = 14;
+  ctx.strokeStyle = accent;
+  ctx.globalAlpha = 0.65;
+  ctx.lineWidth = 1.5;
   ctx.beginPath();
-  ctx.arc(viewport.width * 0.15, viewport.height * 0.15, viewport.width * 0.25, 0, Math.PI * 2);
-  ctx.fill();
+  // top-left
+  ctx.moveTo(inset, inset + tick); ctx.lineTo(inset, inset); ctx.lineTo(inset + tick, inset);
+  // top-right
+  ctx.moveTo(viewport.width - inset - tick, inset); ctx.lineTo(viewport.width - inset, inset); ctx.lineTo(viewport.width - inset, inset + tick);
+  // bottom-right
+  ctx.moveTo(viewport.width - inset, viewport.height - inset - tick); ctx.lineTo(viewport.width - inset, viewport.height - inset); ctx.lineTo(viewport.width - inset - tick, viewport.height - inset);
+  // bottom-left
+  ctx.moveTo(inset + tick, viewport.height - inset); ctx.lineTo(inset, viewport.height - inset); ctx.lineTo(inset, viewport.height - inset - tick);
+  ctx.stroke();
   ctx.globalAlpha = 1;
-
-  // Border frame
-  ctx.strokeStyle = colors.accentColor || "#00f0ff";
-  ctx.lineWidth = 1;
-  ctx.strokeRect(24, 24, viewport.width - 48, viewport.height - 48);
-
-  // Scanlines
-  ctx.strokeStyle = "rgba(0, 240, 255, 0.04)";
-  ctx.lineWidth = 1;
-  for (let y = 0; y < viewport.height; y += 2) {
-    ctx.beginPath();
-    ctx.moveTo(0, y);
-    ctx.lineTo(viewport.width, y);
-    ctx.stroke();
-  }
 }
 
 function getGridMetrics(columns, rows, padding = 82) {
@@ -359,41 +418,42 @@ function getGridMetrics(columns, rows, padding = 82) {
 }
 
 function drawOverlayCard(ctx, title, subtitle, accent) {
-  const width = Math.min(340, viewport.width - 80);
-  const height = 140;
+  // Dim the whole stage behind the card.
+  ctx.fillStyle = "rgba(3, 3, 5, 0.6)";
+  ctx.fillRect(0, 0, viewport.width, viewport.height);
+
+  const width = Math.min(400, viewport.width - 72);
+  const height = 138;
   const x = Math.floor((viewport.width - width) / 2);
   const y = Math.floor((viewport.height - height) / 2);
 
-  // Card background with neon border
-  ctx.fillStyle = "rgba(11, 13, 20, 0.92)";
+  ctx.fillStyle = "rgba(7, 7, 9, 0.96)";
   ctx.fillRect(x, y, width, height);
   ctx.strokeStyle = accent;
-  ctx.lineWidth = 1.5;
-  ctx.strokeRect(x, y, width, height);
+  ctx.lineWidth = 1;
+  ctx.strokeRect(x + 0.5, y + 0.5, width - 1, height - 1);
 
-  // Glitch effect: draw title 3 times with chromatic offset
+  // Corner ticks on the card.
+  const tick = 8;
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(x - 3, y + tick); ctx.lineTo(x - 3, y - 3); ctx.lineTo(x + tick, y - 3);
+  ctx.moveTo(x + width - tick, y - 3); ctx.lineTo(x + width + 3, y - 3); ctx.lineTo(x + width + 3, y + tick);
+  ctx.moveTo(x + width + 3, y + height - tick); ctx.lineTo(x + width + 3, y + height + 3); ctx.lineTo(x + width - tick, y + height + 3);
+  ctx.moveTo(x + tick, y + height + 3); ctx.lineTo(x - 3, y + height + 3); ctx.lineTo(x - 3, y + height - tick);
+  ctx.stroke();
+
   ctx.textAlign = "center";
-  ctx.font = '700 26px "Space Grotesk", sans-serif';
+  ctx.fillStyle = accent;
+  ctx.font = '24px "Silkscreen", "JetBrains Mono", monospace';
+  ctx.fillText(title.toUpperCase(), x + width / 2, y + 60);
 
-  // Cyan layer
-  ctx.fillStyle = "rgba(0, 240, 255, 0.6)";
-  ctx.fillText(title, x + width / 2 + 1, y + 58);
-
-  // Magenta layer
-  ctx.fillStyle = "rgba(255, 43, 214, 0.6)";
-  ctx.fillText(title, x + width / 2 - 1, y + 58);
-
-  // White main text
-  ctx.fillStyle = "#ffffff";
-  ctx.shadowColor = accent;
-  ctx.shadowBlur = 12;
-  ctx.fillText(title, x + width / 2, y + 58);
-  ctx.shadowBlur = 0;
-
-  // Subtitle
-  ctx.fillStyle = "rgba(230, 236, 255, 0.8)";
-  ctx.font = '400 13px "Inter", sans-serif';
-  ctx.fillText(subtitle, x + width / 2, y + 94);
+  // Blinking prompt line, arcade attract style.
+  const blink = Math.floor(performance.now() / 530) % 2 === 0;
+  ctx.fillStyle = blink ? "rgba(233, 231, 224, 0.9)" : "rgba(233, 231, 224, 0.3)";
+  ctx.font = '500 12px "JetBrains Mono", monospace';
+  ctx.fillText(subtitle.toUpperCase(), x + width / 2, y + 96);
+  ctx.textAlign = "left";
 }
 
 function resizeCanvas() {
@@ -414,13 +474,16 @@ function renderGamePicker() {
   for (const definition of gameDefinitions) {
     const button = document.createElement("button");
     button.type = "button";
-    button.className = "picker-button";
+    button.className = "cab";
+    button.style.setProperty("--card-acc", definition.accent);
 
     if (definition.id === activeGameId) {
       button.classList.add("is-active");
     }
 
-    button.innerHTML = `<strong>${definition.title}</strong><span>${definition.summary}</span>`;
+    const bestScore = Math.max(...definition.modes.map((mode) => getBestEntry(definition.id, mode.id).score), 0);
+    button.innerHTML = `${definition.icon}<strong>${definition.title}</strong><span class="cab-hi">HI ${formatScore(bestScore)}</span>`;
+    button.title = definition.summary;
     button.addEventListener("click", () => {
       if (definition.id !== activeGameId) {
         switchGame(definition.id);
@@ -438,13 +501,13 @@ function renderModePicker() {
   for (const mode of definition.modes) {
     const button = document.createElement("button");
     button.type = "button";
-    button.className = "mode-button";
 
     if (mode.id === activeModeId) {
       button.classList.add("is-active");
     }
 
-    button.innerHTML = `<strong>${mode.label}</strong><span>${mode.summary}</span>`;
+    button.textContent = mode.label;
+    button.title = mode.summary;
     button.addEventListener("click", () => {
       if (mode.id !== activeModeId) {
         switchMode(mode.id);
@@ -457,7 +520,7 @@ function renderModePicker() {
 
 function renderHud() {
   if (!activeGame) {
-    return;
+    return null;
   }
 
   const definition = getDefinition();
@@ -467,11 +530,12 @@ function renderHud() {
 
   gameTag.textContent = definition.kicker;
   gameTitle.textContent = definition.title;
-  gameSubtitle.textContent = mode.summary;
+  gameSubtitle.textContent = definition.summary;
 
   scoreLabel.textContent = meta.scoreLabel;
-  scoreValue.textContent = String(meta.score);
-  bestValue.textContent = String(best);
+  scoreValue.textContent = formatScore(meta.score);
+  bestValue.textContent = formatScore(best.score);
+  bestInitials.textContent = best.initials;
   modeValue.textContent = mode.label;
   metaLabel.textContent = meta.metricLabel;
   metaValue.textContent = meta.metricValue;
@@ -488,9 +552,28 @@ function renderHud() {
     button.textContent = control.label;
     button.disabled = !control.enabled;
   }
+
+  return meta;
+}
+
+function applyAccent(definition) {
+  document.documentElement.style.setProperty("--acc", definition.accent);
+  document.body.dataset.game = definition.id;
+}
+
+function playBootAnimation() {
+  if (!crtScreen) {
+    return;
+  }
+
+  crtScreen.classList.remove("is-booting");
+  void crtScreen.offsetWidth;
+  crtScreen.classList.add("is-booting");
 }
 
 function switchGame(gameId) {
+  closeInitials(initialsChars.length > 0);
+
   const definition = getDefinition(gameId);
   const mode = definition.modes[0];
 
@@ -498,6 +581,9 @@ function switchGame(gameId) {
   activeModeId = mode.id;
   activeGame = definition.create(mode);
   lastFrameTime = performance.now();
+  lastStatus = null;
+  applyAccent(definition);
+  playBootAnimation();
   renderGamePicker();
   renderModePicker();
   renderHud();
@@ -505,12 +591,15 @@ function switchGame(gameId) {
 }
 
 function switchMode(modeId) {
+  closeInitials(initialsChars.length > 0);
+
   const definition = getDefinition();
   const mode = getMode(definition, modeId);
 
   activeModeId = mode.id;
   activeGame = definition.create(mode);
   lastFrameTime = performance.now();
+  lastStatus = null;
   renderModePicker();
   renderHud();
   SFX.click();
@@ -544,7 +633,7 @@ function updateFullscreenButton() {
     return;
   }
 
-  fullscreenButton.textContent = isStageFullscreen() ? "Exit Full Screen" : "Full Screen";
+  fullscreenButton.textContent = isStageFullscreen() ? "EXIT" : "FULL";
 }
 
 async function toggleFullscreen() {
@@ -568,44 +657,70 @@ function frame(now) {
   lastFrameTime = now;
 
   if (activeGame) {
-    activeGame.update(deltaMs, now / 1000);
+    if (!initialsOpen) {
+      activeGame.update(deltaMs, now / 1000);
+    }
+
     activeGame.render(context, now / 1000);
-    renderHud();
+    const meta = renderHud();
+
+    if (meta && meta.status !== lastStatus) {
+      handleStatusChange(lastStatus, meta);
+      lastStatus = meta.status;
+    }
   }
 
   window.requestAnimationFrame(frame);
 }
 
+function handleStatusChange(previousStatus, meta) {
+  marqueeElement.classList.toggle("is-ready", meta.status === "ready");
+
+  // A fresh run started: burn a credit, remember the score to beat.
+  if (meta.status === "running" && ["ready", "game-over", "won"].includes(previousStatus)) {
+    credits += 1;
+    saveCredits();
+    updateCreditsReadout();
+    runStartBest = getBestEntry(activeGameId, activeModeId).score;
+  }
+
+  // A run ended: refresh cabinet hi-scores, prompt for initials on a new record.
+  if ((meta.status === "game-over" || meta.status === "won") && previousStatus === "running") {
+    renderGamePicker();
+
+    if (meta.score > 0 && meta.score > runStartBest) {
+      openInitials(meta.score);
+    }
+  }
+}
+
 function createSnakeGame(mode) {
   const config = {
     classic: {
-      accent: "#00f0ff",
-      accentGlow: "rgba(0, 240, 255, 0.3)",
-      accentColor: "#00f0ff",
-      bodyColor: "#00f0ff",
-      foodColor: "#b6ff3c",
+      accent: "#46f06e",
+      accentColor: "#46f06e",
+      bodyColor: "#46f06e",
+      foodColor: "#ffd23f",
       gridSize: 18,
       minTickMs: 140,
       tickMs: 140,
       wrap: false
     },
     wrap: {
-      accent: "#00f0ff",
-      accentGlow: "rgba(0, 240, 255, 0.3)",
-      accentColor: "#00f0ff",
-      bodyColor: "#00f0ff",
-      foodColor: "#ffb547",
+      accent: "#3ae8c2",
+      accentColor: "#3ae8c2",
+      bodyColor: "#3ae8c2",
+      foodColor: "#ff6a3d",
       gridSize: 18,
       minTickMs: 124,
       tickMs: 124,
       wrap: true
     },
     rush: {
-      accent: "#ff2bd6",
-      accentGlow: "rgba(255, 43, 214, 0.3)",
-      accentColor: "#ff2bd6",
-      bodyColor: "#ff2bd6",
-      foodColor: "#b6ff3c",
+      accent: "#ffd23f",
+      accentColor: "#ffd23f",
+      bodyColor: "#ffd23f",
+      foodColor: "#ff4f9a",
       gridSize: 18,
       minTickMs: 72,
       speedGain: 4,
@@ -679,10 +794,10 @@ function createSnakeGame(mode) {
 
       if (state.score > previousScore) {
         SFX.score();
-        const statCard = document.querySelector(".stat-card");
-        if (statCard) {
-          shake(statCard, 140);
-          burst(statCard);
+        const scoreCell = document.querySelector(".hud-cell");
+        if (scoreCell) {
+          shake(scoreCell, 140);
+          burst(scoreCell);
         }
       }
 
@@ -728,23 +843,22 @@ function createSnakeGame(mode) {
   }
 
   function render(ctx, time) {
-    drawStageBackdrop(ctx, {
-      accentColor: config.accentColor,
-      accentGlow: config.accentGlow
-    });
+    drawStageBackdrop(ctx, { accentColor: config.accentColor });
 
     const board = getGridMetrics(state.gridSize, state.gridSize, 88);
 
     // Board background
-    ctx.fillStyle = "#05060a";
+    ctx.fillStyle = "#050507";
     ctx.fillRect(board.x - 20, board.y - 20, board.width + 40, board.height + 40);
+    ctx.globalAlpha = 0.55;
     ctx.strokeStyle = config.accentColor;
     ctx.lineWidth = 1;
     ctx.strokeRect(board.x - 20, board.y - 20, board.width + 40, board.height + 40);
+    ctx.globalAlpha = 1;
     ctx.fillRect(board.x, board.y, board.width, board.height);
 
-    // Grid lines (subtle cyan)
-    ctx.strokeStyle = `rgba(0, 240, 255, 0.08)`;
+    // Grid lines
+    ctx.strokeStyle = "rgba(255, 255, 255, 0.06)";
     ctx.lineWidth = 0.5;
 
     for (let index = 0; index <= state.gridSize; index += 1) {
@@ -785,7 +899,7 @@ function createSnakeGame(mode) {
       ctx.shadowBlur = 0;
     }
 
-    // Snake with neon glow
+    // Snake body: tail fades out, head gets eyes.
     for (let index = state.snake.length - 1; index >= 0; index -= 1) {
       const segment = state.snake[index];
       const pad = index === 0 ? 2 : 3;
@@ -793,22 +907,33 @@ function createSnakeGame(mode) {
       const y = board.y + segment.y * board.cellSize + pad;
       const size = board.cellSize - pad * 2;
       const isHead = index === 0;
-      const color = isHead ? config.bodyColor : config.accentColor;
 
-      ctx.fillStyle = color;
-      ctx.shadowColor = color;
-      ctx.shadowBlur = isHead ? 20 : 12;
-      ctx.fillRect(x, y, size, size);
+      ctx.globalAlpha = isHead ? 1 : Math.max(0.3, 1 - (index / state.snake.length) * 0.65);
+      ctx.shadowColor = config.bodyColor;
+      ctx.shadowBlur = isHead ? 16 : 6;
+      fillRoundedRect(ctx, x, y, size, size, isHead ? 5 : 3, config.bodyColor);
       ctx.shadowBlur = 0;
+    }
+    ctx.globalAlpha = 1;
+
+    // Eyes track the travel direction.
+    if (state.snake.length > 0) {
+      const head = state.snake[0];
+      const cell = board.cellSize;
+      const vector = DIRECTION_VECTORS[state.direction] ?? { x: 1, y: 0 };
+      const eye = Math.max(2, cell * 0.13);
+      const eyeX = board.x + head.x * cell + cell / 2 + vector.x * cell * 0.18;
+      const eyeY = board.y + head.y * cell + cell / 2 + vector.y * cell * 0.18;
+
+      ctx.fillStyle = "#050507";
+      ctx.fillRect(eyeX + vector.y * cell * 0.17 - eye / 2, eyeY + vector.x * cell * 0.17 - eye / 2, eye, eye);
+      ctx.fillRect(eyeX - vector.y * cell * 0.17 - eye / 2, eyeY - vector.x * cell * 0.17 - eye / 2, eye, eye);
     }
 
     // Mode label
     ctx.fillStyle = config.accentColor;
-    ctx.font = '600 12px "JetBrains Mono", monospace';
-    ctx.shadowColor = config.accentColor;
-    ctx.shadowBlur = 8;
-    ctx.fillText(mode.label.toUpperCase(), board.x, board.y - 10);
-    ctx.shadowBlur = 0;
+    ctx.font = '10px "Silkscreen", "JetBrains Mono", monospace';
+    ctx.fillText(mode.label.toUpperCase(), board.x, board.y - 12);
 
     // Status overlays
     if (state.status === "ready") {
@@ -834,7 +959,7 @@ function createSnakeGame(mode) {
     getMeta() {
       return {
         canPause: state.status === "running" || state.status === "paused",
-        controlHint: "Arrow keys or WASD steer. Enter or Space starts. Space pauses after launch.",
+        controlHint: "Arrows or WASD steer. Enter or Space starts. Space pauses.",
         controls: {
           down: { enabled: true, label: "Down" },
           left: { enabled: true, label: "Left" },
@@ -848,20 +973,21 @@ function createSnakeGame(mode) {
         noteText: mode.summary,
         score: state.score,
         scoreLabel: "Score",
+        status: state.status,
         statusText:
           state.status === "ready"
-            ? "Cabinet is armed. Pick a line, then press Enter or Space to start."
+            ? "CREDIT READY · PRESS START"
             : state.status === "game-over"
-            ? "Snake clipped the board. Restart and tighten the turns."
+            ? "Snake clipped the board. R restarts."
             : state.status === "won"
-              ? "Full board clear. That is a complete control run."
+              ? "Full board clear. A perfect control run."
               : state.status === "paused"
-                ? "Run paused. The queue is frozen until you resume."
+                ? "Run frozen. Space resumes."
                 : config.wrap
-                  ? "Wrap mode is live. Use the walls as hidden tunnels."
+                  ? "Wrap is live — the walls are tunnels."
                   : mode.id === "rush"
-                    ? "Rush mode speeds up after every meal. Stay ahead of the clock."
-                    : "Canvas grid is locked to whole cells now, so the board stays perfectly aligned."
+                    ? "Tempo rises with every meal. Stay ahead of it."
+                    : "Solid walls. Watch your tail."
       };
     },
     keydown,
@@ -878,22 +1004,20 @@ function createSnakeGame(mode) {
 function createDodgeGame(mode) {
   const config = {
     cruise: {
-      accent: "#00f0ff",
-      accentColor: "#00f0ff",
-      accentGlow: "rgba(0, 240, 255, 0.3)",
-      hazardColor: "#ff2bd6",
-      playerColor: "#00f0ff",
+      accent: "#ff6a3d",
+      accentColor: "#ff6a3d",
+      hazardColor: "#ff5c5c",
+      playerColor: "#ffd23f",
       baseTickMs: 176,
       maxHazards: 4,
       minHazards: 2,
       minTickMs: 106
     },
     storm: {
-      accent: "#ff2bd6",
-      accentColor: "#ff2bd6",
-      accentGlow: "rgba(255, 43, 214, 0.3)",
+      accent: "#ff3355",
+      accentColor: "#ff3355",
       hazardColor: "#ff3355",
-      playerColor: "#b6ff3c",
+      playerColor: "#f4f4f8",
       baseTickMs: 148,
       maxHazards: 5,
       minHazards: 3,
@@ -1053,29 +1177,28 @@ function createDodgeGame(mode) {
   }
 
   function render(ctx) {
-    drawStageBackdrop(ctx, {
-      accentColor: config.accentColor,
-      accentGlow: config.accentGlow
-    });
+    drawStageBackdrop(ctx, { accentColor: config.accentColor });
 
     const board = getGridMetrics(columns, rows, 92);
-    ctx.fillStyle = "#05060a";
+    ctx.fillStyle = "#050507";
     ctx.fillRect(board.x - 20, board.y - 20, board.width + 40, board.height + 40);
+    ctx.globalAlpha = 0.55;
     ctx.strokeStyle = config.accentColor;
     ctx.lineWidth = 1;
     ctx.strokeRect(board.x - 20, board.y - 20, board.width + 40, board.height + 40);
+    ctx.globalAlpha = 1;
     ctx.fillRect(board.x, board.y, board.width, board.height);
 
-    // Lane stripes with accent color
+    // Alternating lane stripes
     for (let column = 0; column < columns; column += 1) {
       const x = board.x + column * board.cellSize;
-      const stripe = column % 2 === 0 ? "rgba(0, 240, 255, 0.04)" : "rgba(0, 240, 255, 0.02)";
+      const stripe = column % 2 === 0 ? "rgba(255, 255, 255, 0.035)" : "rgba(255, 255, 255, 0.015)";
       ctx.fillStyle = stripe;
       ctx.fillRect(x, board.y, board.cellSize, board.height);
     }
 
     // Grid lines
-    ctx.strokeStyle = "rgba(0, 240, 255, 0.08)";
+    ctx.strokeStyle = "rgba(255, 255, 255, 0.05)";
     ctx.lineWidth = 0.5;
     for (let row = 1; row < rows; row += 1) {
       const y = board.y + row * board.cellSize + 0.5;
@@ -1113,11 +1236,8 @@ function createDodgeGame(mode) {
 
     // Mode label
     ctx.fillStyle = config.accentColor;
-    ctx.font = '600 12px "JetBrains Mono", monospace';
-    ctx.shadowColor = config.accentColor;
-    ctx.shadowBlur = 8;
-    ctx.fillText(mode.label.toUpperCase(), board.x, board.y - 10);
-    ctx.shadowBlur = 0;
+    ctx.font = '10px "Silkscreen", "JetBrains Mono", monospace';
+    ctx.fillText(mode.label.toUpperCase(), board.x, board.y - 12);
 
     if (state.status === "ready") {
       drawOverlayCard(ctx, "Ready", "Press Enter or Space to launch the run.", config.accent);
@@ -1157,16 +1277,17 @@ function createDodgeGame(mode) {
         noteText: mode.summary,
         score: state.score,
         scoreLabel: "Score",
+        status: state.status,
         statusText:
           state.status === "ready"
-            ? "Run is queued. Press Enter or Space when you want the first wave."
+            ? "CREDIT READY · PRESS START"
             : state.status === "game-over"
-            ? "Meteor contact. The lane pattern closed before the ship cleared."
+            ? "Meteor contact. R restarts the run."
             : state.status === "paused"
-              ? "Traffic frozen. Resume to keep the survival score climbing."
+              ? "Traffic frozen. Space resumes."
               : mode.id === "storm"
-                ? "Storm mode is dense. Read the next row before you commit."
-                : "Cruise mode ramps more gently, but the board still tightens over time."
+                ? "Storm density. Read the next row before you commit."
+                : "Cruise ramps gently, but the board still tightens."
       };
     },
     keydown,
@@ -1357,12 +1478,7 @@ function createMemoryGame(mode) {
   }
 
   function render(ctx) {
-    drawStageBackdrop(ctx, {
-      bottom: "#14142b",
-      glowA: "rgba(168, 85, 247, 1)",
-      glowB: "rgba(236, 72, 153, 1)",
-      top: "#20133f"
-    });
+    drawStageBackdrop(ctx, { accentColor: config.accent });
 
     const boardSize = Math.min(viewport.width, viewport.height) - 182;
     const gap = Math.max(12, Math.floor(boardSize * 0.035));
@@ -1393,16 +1509,16 @@ function createMemoryGame(mode) {
       strokeRoundedRect(ctx, x, y, tileSize, tileSize, 22, stroke, 1.5);
 
       ctx.fillStyle = active ? "#0f1020" : "rgba(255, 255, 255, 0.82)";
-      ctx.font = '700 28px "Bahnschrift", "Trebuchet MS", sans-serif';
+      ctx.font = '700 22px "JetBrains Mono", monospace';
       ctx.textAlign = "center";
-      ctx.fillText(String(index + 1), x + tileSize / 2, y + tileSize / 2 + 10);
+      ctx.fillText(String(index + 1), x + tileSize / 2, y + tileSize / 2 + 8);
 
       hitRegions.push({ index, size: tileSize, x, y });
     }
 
     ctx.textAlign = "left";
-    ctx.fillStyle = "rgba(232, 240, 248, 0.9)";
-    ctx.font = '700 13px "Bahnschrift", "Trebuchet MS", sans-serif';
+    ctx.fillStyle = config.accent;
+    ctx.font = '10px "Silkscreen", "JetBrains Mono", monospace';
     ctx.fillText(mode.label.toUpperCase(), startX, startY - 34);
 
     if (state.status === "ready") {
@@ -1442,18 +1558,19 @@ function createMemoryGame(mode) {
         noteText: mode.summary,
         score: state.score,
         scoreLabel: "Rounds",
+        status: ["showing", "input", "round-clear"].includes(state.status) ? "running" : state.status,
         statusText:
           state.status === "ready"
-            ? "Pattern deck is waiting. Press Enter or Space when you are ready."
+            ? "CREDIT READY · PRESS START"
             : state.status === "game-over"
-            ? "Wrong tile. The chain broke on recall."
+            ? "Wrong tile. The chain broke."
             : state.status === "paused"
-              ? "Pattern playback is frozen until you resume."
+              ? "Playback frozen. Space resumes."
               : state.status === "input"
-                ? "Your turn. Repeat the full pattern without hesitation."
+                ? "Your turn. Repeat the full pattern."
                 : mode.id === "rush"
-                  ? "Rush mode trims the flash windows. Read early and commit."
-                  : "Focus mode gives you more reveal time to build a longer chain."
+                  ? "Short flash windows. Read early, commit."
+                  : "Watch the sequence build."
       };
     },
     keydown,
@@ -1700,12 +1817,7 @@ function createBlackoutGame(mode) {
   }
 
   function render(ctx) {
-    drawStageBackdrop(ctx, {
-      bottom: "#020202",
-      glowA: "rgba(255, 255, 255, 0.06)",
-      glowB: "rgba(239, 91, 42, 0.14)",
-      top: "#0a0a0a"
-    });
+    drawStageBackdrop(ctx, { accentColor: config.accent });
 
     const board = getGridMetrics(20, 20, 92);
     const scale = board.width / world.width;
@@ -1766,11 +1878,11 @@ function createBlackoutGame(mode) {
     ctx.shadowBlur = 0;
 
     ctx.fillStyle = "rgba(255, 255, 255, 0.92)";
-    ctx.font = '700 13px "Bahnschrift", "Trebuchet MS", sans-serif';
+    ctx.font = '10px "Silkscreen", "JetBrains Mono", monospace';
     ctx.fillText(mode.label.toUpperCase(), board.x, board.y - 30);
 
     if (state.status === "ready") {
-      drawOverlayCard(ctx, "Ready", "Press Enter or Space to start the cabinet.", config.accent);
+      drawOverlayCard(ctx, "Ready", "Press Enter or Space to start the rally.", config.accent);
     } else if (state.status === "paused") {
       drawOverlayCard(ctx, "Paused", "Resume when you want the rally back.", config.accent);
     } else if (state.status === "game-over") {
@@ -1807,16 +1919,17 @@ function createBlackoutGame(mode) {
         noteText: mode.summary,
         score: state.score,
         scoreLabel: "Score",
+        status: state.status,
         statusText:
           state.status === "ready"
-            ? "Blackout is idle. Press Enter or Space to start the rally."
+            ? "CREDIT READY · PRESS START"
             : state.status === "game-over"
-              ? "Ball dropped below the rail. Restart and catch the next return."
+              ? "Ball dropped below the rail. R restarts."
               : state.status === "paused"
-                ? "Rally frozen. Resume when you want the cabinet live again."
+                ? "Rally frozen. Space resumes."
                 : mode.id === "hardcut"
-                  ? "Hard Cut tightens the paddle and pushes a faster return angle."
-                  : "Night mode keeps the paddle wider and the rhythm steadier."
+                  ? "Tight paddle, fast returns. No room for error."
+                  : "Wide paddle, steady rhythm. Build the rally."
       };
     },
     keydown,
@@ -2085,11 +2198,15 @@ function createCipherGame(mode) {
   }
 
   function keydown(event) {
-    const direction = CONTROL_KEY_TO_DIRECTION[event.key];
+    // Try event.key first, then event.code as fallback for arrow keys
+    const direction = CONTROL_KEY_TO_DIRECTION[event.key] || CONTROL_KEY_TO_DIRECTION[event.code];
 
     if (direction) {
-      SFX.keyPress();
-      return setDirection(direction);
+      if (state.status === "running" || state.status === "paused" || state.status === "ready") {
+        SFX.keyPress();
+        setDirection(direction);
+        return true;
+      }
     }
 
     if (event.code === "Space") {
@@ -2108,12 +2225,7 @@ function createCipherGame(mode) {
   }
 
   function render(ctx, time) {
-    drawStageBackdrop(ctx, {
-      bottom: "#010101",
-      glowA: "rgba(125, 211, 252, 0.1)",
-      glowB: "rgba(248, 113, 113, 0.12)",
-      top: "#090909"
-    });
+    drawStageBackdrop(ctx, { accentColor: config.accent });
 
     const board = getGridMetrics(gridSize, gridSize, 88);
     fillRoundedRect(ctx, board.x - 18, board.y - 18, board.width + 36, board.height + 36, 16, "rgba(5, 5, 5, 0.94)");
@@ -2179,8 +2291,8 @@ function createCipherGame(mode) {
     ctx.shadowBlur = 0;
     strokeRoundedRect(ctx, playerX + 5, playerY + 5, playerSize - 10, playerSize - 10, 2, "rgba(5, 10, 16, 0.5)");
 
-    ctx.fillStyle = "rgba(255, 255, 255, 0.92)";
-    ctx.font = '700 13px "Bahnschrift", "Trebuchet MS", sans-serif';
+    ctx.fillStyle = config.accent;
+    ctx.font = '10px "Silkscreen", "JetBrains Mono", monospace';
     ctx.fillText(mode.label.toUpperCase(), board.x, board.y - 30);
 
     if (state.status === "ready") {
@@ -2217,16 +2329,17 @@ function createCipherGame(mode) {
         noteText: mode.summary,
         score: state.score,
         scoreLabel: "Nodes",
+        status: state.status,
         statusText:
           state.status === "ready"
-            ? "Cipher grid is waiting. Press Enter or Space to start the hunt."
+            ? "CREDIT READY · PRESS START"
             : state.status === "game-over"
-              ? "Hunter contact. Reset and keep more space between lines."
+              ? "Hunter contact. R restarts the chase."
               : state.status === "paused"
-                ? "Grid frozen. Resume to continue the route."
+                ? "Grid frozen. Space resumes."
                 : mode.id === "panic"
-                  ? "Panic mode starts hot and stacks more hunters faster."
-                  : "Trace mode builds pressure steadily as the board fills with hunters."
+                  ? "Two hunters and climbing. Keep moving."
+                  : "Pressure builds with every node. Plan the route."
       };
     },
     keydown,
@@ -2243,22 +2356,20 @@ function createCipherGame(mode) {
 function createFlappyGame(mode) {
   const config = {
     easy: {
-      accent: "#00f0ff",
-      accentColor: "#00f0ff",
-      accentGlow: "rgba(0, 240, 255, 0.3)",
-      gravity: 0.4,
-      flapPower: 8,
-      pipeGap: 140,
+      accent: "#ffd23f",
+      accentColor: "#ffd23f",
+      gravity: 1250,
+      flapPower: 400,
+      pipeGap: 150,
       pipeSpeed: 180,
       pipeFreq: 2000
     },
     hard: {
-      accent: "#ff2bd6",
-      accentColor: "#ff2bd6",
-      accentGlow: "rgba(255, 43, 214, 0.3)",
-      gravity: 0.5,
-      flapPower: 7,
-      pipeGap: 100,
+      accent: "#ff6a3d",
+      accentColor: "#ff6a3d",
+      gravity: 1450,
+      flapPower: 420,
+      pipeGap: 110,
       pipeSpeed: 240,
       pipeFreq: 1600
     }
@@ -2333,8 +2444,9 @@ function createFlappyGame(mode) {
 
     gameTime += deltaMs;
     const deltaS = deltaMs / 1000;
-    let nextBirdY = state.birdY + state.birdVY * deltaS;
-    state.birdVY += config.gravity;
+    // Integrate per-second so the feel doesn't depend on frame rate.
+    const nextVY = state.birdVY + config.gravity * deltaS;
+    let nextBirdY = state.birdY + nextVY * deltaS;
 
     let nextPipes = state.pipes
       .map(p => ({ ...p, x: p.x - config.pipeSpeed * deltaS }))
@@ -2378,7 +2490,7 @@ function createFlappyGame(mode) {
     state = {
       ...state,
       birdY: nextBirdY,
-      birdVY: state.birdVY,
+      birdVY: nextVY,
       pipes: nextPipes,
       score: nextScore,
       status: nextStatus
@@ -2396,10 +2508,7 @@ function createFlappyGame(mode) {
   }
 
   function render(ctx) {
-    drawStageBackdrop(ctx, {
-      accentColor: config.accentColor,
-      accentGlow: config.accentGlow
-    });
+    drawStageBackdrop(ctx, { accentColor: config.accentColor });
 
     for (const pipe of state.pipes) {
       ctx.fillStyle = config.accentColor;
@@ -2410,14 +2519,28 @@ function createFlappyGame(mode) {
       ctx.shadowBlur = 0;
     }
 
-    const birdColor = config.accentColor;
-    ctx.fillStyle = birdColor;
-    ctx.shadowColor = birdColor;
-    ctx.shadowBlur = 16;
+    // Bird tilts with its velocity.
+    ctx.save();
+    ctx.translate(birdX, state.birdY);
+    ctx.rotate(clamp(state.birdVY / 600, -0.4, 1.05));
+    ctx.fillStyle = "#f4f4f8";
+    ctx.shadowColor = config.accentColor;
+    ctx.shadowBlur = 14;
     ctx.beginPath();
-    ctx.arc(birdX, state.birdY, birdSize, 0, Math.PI * 2);
+    ctx.arc(0, 0, birdSize, 0, Math.PI * 2);
     ctx.fill();
     ctx.shadowBlur = 0;
+    ctx.fillStyle = config.accentColor;
+    ctx.fillRect(-birdSize * 0.6, -2, birdSize * 0.7, 5);
+    ctx.beginPath();
+    ctx.moveTo(birdSize - 2, -4);
+    ctx.lineTo(birdSize + 7, 0);
+    ctx.lineTo(birdSize - 2, 4);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = "#050507";
+    ctx.fillRect(birdSize * 0.25, -birdSize * 0.5, 4, 4);
+    ctx.restore();
 
     if (state.status === "ready") {
       drawOverlayCard(ctx, "Ready", "Press Space to flap and start.", config.accent);
@@ -2437,12 +2560,13 @@ function createFlappyGame(mode) {
         controls: { up: { enabled: false, label: "" }, down: { enabled: false, label: "" }, left: { enabled: false, label: "" }, right: { enabled: false, label: "" } },
         controlPadHidden: true,
         isPaused: state.status === "paused",
-        metricLabel: "Best",
-        metricValue: String(syncBest(activeGameId, activeModeId, state.score)),
+        metricLabel: "Scroll",
+        metricValue: `${config.pipeSpeed} px/s`,
         noteText: mode.summary,
         score: state.score,
         scoreLabel: "Pipes",
-        statusText: state.status === "ready" ? "Press Space to launch." : state.status === "game-over" ? "Hit a pipe or boundary." : "Keep rhythm and dodge gaps."
+        status: state.status,
+        statusText: state.status === "ready" ? "CREDIT READY · PRESS START" : state.status === "game-over" ? "Clipped. Space retries." : "Hold the rhythm. Thread the gaps."
       };
     },
     keydown,
@@ -2457,19 +2581,17 @@ function createFlappyGame(mode) {
 function createPongGame(mode) {
   const config = {
     normal: {
-      accent: "#00f0ff",
-      accentColor: "#00f0ff",
-      accentGlow: "rgba(0, 240, 255, 0.3)",
+      accent: "#ff4f9a",
+      accentColor: "#ff4f9a",
       ballSpeed: 240,
-      paddleSpeed: 320,
+      paddleSpeed: 420,
       aiDelay: 0.1
     },
     hardcore: {
-      accent: "#ff2bd6",
-      accentColor: "#ff2bd6",
-      accentGlow: "rgba(255, 43, 214, 0.3)",
+      accent: "#ff2454",
+      accentColor: "#ff2454",
       ballSpeed: 300,
-      paddleSpeed: 400,
+      paddleSpeed: 480,
       aiDelay: 0.04
     }
   }[mode.id];
@@ -2498,14 +2620,23 @@ function createPongGame(mode) {
   }
 
   let state = createRunState();
+  const held = { up: false, down: false };
 
   function restart() {
     state = createRunState();
+    held.up = false;
+    held.down = false;
   }
 
   function launch() {
-    if (state.status === "ready" || state.status === "game-over") {
+    if (state.status === "ready") {
       state = { ...state, status: "running" };
+      SFX.start();
+      return true;
+    }
+    if (state.status === "game-over") {
+      // Full reset — otherwise the finished scoreline ends the match instantly.
+      state = createRunState("running");
       SFX.start();
       return true;
     }
@@ -2566,6 +2697,10 @@ function createPongGame(mode) {
     }
 
     let nextPlayerY = state.playerY;
+    if (held.up) nextPlayerY -= config.paddleSpeed * deltaS;
+    if (held.down) nextPlayerY += config.paddleSpeed * deltaS;
+    nextPlayerY = clamp(nextPlayerY, 0, height - paddleHeight);
+
     let nextAiY = state.aiY;
 
     const aiErrorMargin = mode.id === "hardcore" ? 20 : 40;
@@ -2587,11 +2722,11 @@ function createPongGame(mode) {
 
   function keydown(event) {
     if (event.key === "ArrowUp" || event.key === "w" || event.key === "W") {
-      state = { ...state, playerY: clamp(state.playerY - 40, 0, height - paddleHeight) };
+      held.up = true;
       return true;
     }
     if (event.key === "ArrowDown" || event.key === "s" || event.key === "S") {
-      state = { ...state, playerY: clamp(state.playerY + 40, 0, height - paddleHeight) };
+      held.down = true;
       return true;
     }
     if (event.code === "Space") {
@@ -2600,56 +2735,97 @@ function createPongGame(mode) {
     return false;
   }
 
+  function keyup(event) {
+    if (event.key === "ArrowUp" || event.key === "w" || event.key === "W") {
+      held.up = false;
+    }
+    if (event.key === "ArrowDown" || event.key === "s" || event.key === "S") {
+      held.down = false;
+    }
+  }
+
+  function pointermove(point) {
+    if (state.status !== "running") {
+      return false;
+    }
+    state = { ...state, playerY: clamp(point.y - paddleHeight / 2, 0, height - paddleHeight) };
+    return true;
+  }
+
   function render(ctx) {
-    drawStageBackdrop(ctx, {
-      accentColor: config.accentColor,
-      accentGlow: config.accentGlow
-    });
+    drawStageBackdrop(ctx, { accentColor: config.accentColor });
+
+    // Dashed center line.
+    ctx.strokeStyle = "rgba(255, 255, 255, 0.12)";
+    ctx.lineWidth = 2;
+    ctx.setLineDash([6, 10]);
+    ctx.beginPath();
+    ctx.moveTo(width / 2, 24);
+    ctx.lineTo(width / 2, height - 24);
+    ctx.stroke();
+    ctx.setLineDash([]);
 
     ctx.fillStyle = config.accentColor;
     ctx.shadowColor = config.accentColor;
     ctx.shadowBlur = 12;
     ctx.fillRect(0, state.playerY, paddleWidth, paddleHeight);
     ctx.fillRect(width - paddleWidth, state.aiY, paddleWidth, paddleHeight);
+    ctx.fillStyle = "#f4f4f8";
+    ctx.shadowColor = "rgba(255, 255, 255, 0.4)";
     ctx.beginPath();
     ctx.arc(state.ball.x, state.ball.y, ballSize, 0, Math.PI * 2);
     ctx.fill();
     ctx.shadowBlur = 0;
 
-    ctx.fillStyle = config.accentColor;
-    ctx.font = '700 48px "Space Grotesk"';
+    ctx.fillStyle = "rgba(255, 255, 255, 0.85)";
+    ctx.font = '32px "Silkscreen", "JetBrains Mono", monospace';
     ctx.textAlign = "center";
-    ctx.fillText(state.playerScore, width / 4, 80);
-    ctx.fillText(state.aiScore, (width * 3) / 4, 80);
+    ctx.fillText(state.playerScore, width / 4, 76);
+    ctx.fillText(state.aiScore, (width * 3) / 4, 76);
+    ctx.textAlign = "left";
 
     if (state.status === "ready") {
-      drawOverlayCard(ctx, "Ready", "Arrow keys to move. Space to start.", config.accent);
+      drawOverlayCard(ctx, "Ready", "W/S to move, or follow the mouse. Space starts.", config.accent);
     } else if (state.status === "paused") {
       drawOverlayCard(ctx, "Paused", "Space to resume.", config.accent);
     } else if (state.status === "game-over") {
-      drawOverlayCard(ctx, "Match Over", "First to 11 wins. Space to replay.", config.accent);
+      const playerWon = state.playerScore > state.aiScore;
+      drawOverlayCard(ctx, playerWon ? "You Win" : "Machine Wins", "Space for a rematch.", config.accent);
     }
   }
 
   return {
-    action() { return false; },
+    action(control) {
+      if (control === "up") {
+        state = { ...state, playerY: clamp(state.playerY - 48, 0, height - paddleHeight) };
+        return true;
+      }
+      if (control === "down") {
+        state = { ...state, playerY: clamp(state.playerY + 48, 0, height - paddleHeight) };
+        return true;
+      }
+      return false;
+    },
     getMeta() {
       return {
         canPause: state.status === "running" || state.status === "paused",
-        controlHint: "Up/Down or W/S to move paddle. Space to play.",
-        controls: { up: { enabled: true, label: "Up" }, down: { enabled: true, label: "Down" }, left: { enabled: false, label: "" }, right: { enabled: false, label: "" } },
+        controlHint: "Hold W/S or Up/Down, or steer with the mouse. Space starts.",
+        controls: { up: { enabled: true, label: "Up" }, down: { enabled: true, label: "Down" }, left: { enabled: false, label: "—" }, right: { enabled: false, label: "—" } },
         controlPadHidden: false,
         isPaused: state.status === "paused",
-        metricLabel: "Opponent",
+        metricLabel: "Machine",
         metricValue: String(state.aiScore),
         noteText: mode.summary,
         score: state.playerScore,
         scoreLabel: "You",
-        statusText: state.status === "ready" ? "Press Space to start the match." : state.status === "game-over" ? "Match complete. Rematch?" : "Keep the rally alive."
+        status: state.status,
+        statusText: state.status === "ready" ? "CREDIT READY · PRESS START" : state.status === "game-over" ? (state.playerScore > state.aiScore ? "Match won. Rematch?" : "The machine took it. Rematch?") : "First to eleven."
       };
     },
     keydown,
+    keyup,
     pointerdown() { return false; },
+    pointermove,
     render,
     restart,
     togglePause,
@@ -2660,9 +2836,8 @@ function createPongGame(mode) {
 function createPlatformerGame(mode) {
   const config = {
     sprint: {
-      accent: "#b6ff3c",
-      accentColor: "#b6ff3c",
-      accentGlow: "rgba(182, 255, 60, 0.3)",
+      accent: "#a6ff3d",
+      accentColor: "#a6ff3d",
       timeLimit: 60000,
       platformCount: 8,
       gravity: 0.6
@@ -2670,7 +2845,6 @@ function createPlatformerGame(mode) {
     survival: {
       accent: "#ffb547",
       accentColor: "#ffb547",
-      accentGlow: "rgba(255, 181, 71, 0.3)",
       timeLimit: null,
       platformCount: 12,
       gravity: 0.5
@@ -2759,7 +2933,7 @@ function createPlatformerGame(mode) {
         nextY = platform.y - playerSize;
         nextVY = 0;
         onGround = true;
-        if (keysPressed["w"] || keysPressed["W"] || keysPressed[" "]) {
+        if (keysPressed["w"] || keysPressed["W"] || keysPressed[" "] || keysPressed["ArrowUp"]) {
           nextVY = -15;
           SFX.ping();
         }
@@ -2793,26 +2967,31 @@ function createPlatformerGame(mode) {
 
   function keydown(event) {
     keysPressed[event.key] = true;
+    keysPressed[event.code] = true;
+
     if (event.code === "Space") {
       if (state.status === "ready" || state.status === "game-over") {
         return launch();
       }
-      return togglePause();
+      // Space is the jump key mid-run; pause lives on P and the button.
+      return true;
+    }
+
+    if (event.key === "w" || event.key === "W" || event.key === "a" || event.key === "A" ||
+        event.key === "d" || event.key === "D" || event.code === "ArrowUp" ||
+        event.code === "ArrowLeft" || event.code === "ArrowRight") {
+      return true;
     }
     return false;
   }
 
   function keyup(event) {
     keysPressed[event.key] = false;
+    keysPressed[event.code] = false;
   }
 
-  document.addEventListener("keyup", keyup);
-
   function render(ctx) {
-    drawStageBackdrop(ctx, {
-      accentColor: config.accentColor,
-      accentGlow: config.accentGlow
-    });
+    drawStageBackdrop(ctx, { accentColor: config.accentColor });
 
     ctx.fillStyle = config.accentColor;
     ctx.shadowColor = config.accentColor;
@@ -2839,23 +3018,32 @@ function createPlatformerGame(mode) {
   }
 
   return {
-    action() { return false; },
+    action(control) {
+      if (control === "up" && state.status === "running") {
+        keysPressed["w"] = true;
+        setTimeout(() => { keysPressed["w"] = false; }, 120);
+        return true;
+      }
+      return false;
+    },
     getMeta() {
       return {
         canPause: state.status === "running" || state.status === "paused",
-        controlHint: "WASD or Arrows to move. Space to jump.",
-        controls: { up: { enabled: true, label: "Jump" }, down: { enabled: false, label: "" }, left: { enabled: true, label: "Left" }, right: { enabled: true, label: "Right" } },
+        controlHint: "A/D or arrows move. W or Space jumps. P pauses.",
+        controls: { up: { enabled: true, label: "Jump" }, down: { enabled: false, label: "—" }, left: { enabled: true, label: "Left" }, right: { enabled: true, label: "Right" } },
         controlPadHidden: false,
         isPaused: state.status === "paused",
         metricLabel: config.timeLimit ? "Time" : "Height",
         metricValue: config.timeLimit ? `${Math.max(0, Math.floor(state.time / 1000))}s` : `${state.score}m`,
         noteText: mode.summary,
         score: state.score,
-        scoreLabel: "Reached",
-        statusText: state.status === "ready" ? "Reach the top. Space to start." : state.status === "game-over" ? "Fell too far. Try again?" : "Jump to the next platform."
+        scoreLabel: "Height",
+        status: state.status,
+        statusText: state.status === "ready" ? "CREDIT READY · PRESS START" : state.status === "game-over" ? "Fell too far. R restarts." : "Climb. The score is altitude."
       };
     },
     keydown,
+    keyup,
     pointerdown() { return false; },
     render,
     restart,
@@ -2881,12 +3069,69 @@ canvas.addEventListener("pointerdown", (event) => {
 });
 
 document.addEventListener("keydown", (event) => {
+  if (initialsOpen) {
+    handleInitialsKey(event);
+    event.preventDefault();
+    return;
+  }
+
   if (!activeGame) {
     return;
   }
 
   if (activeGame.keydown(event)) {
     event.preventDefault();
+    return;
+  }
+
+  // Cabinet-level shortcuts for keys the active game didn't claim.
+  const key = event.key.toLowerCase();
+
+  if (key === "r") {
+    handleButtonAction("restart");
+    event.preventDefault();
+  } else if (key === "p") {
+    handleButtonAction("pause");
+    event.preventDefault();
+  } else if (key === "m") {
+    toggleMute();
+    SFX.click();
+  } else if (key === "f") {
+    toggleFullscreen();
+    event.preventDefault();
+  } else if (event.key === "[" || event.key === "]") {
+    const index = gameDefinitions.findIndex((definition) => definition.id === activeGameId);
+    const step = event.key === "]" ? 1 : gameDefinitions.length - 1;
+    switchGame(gameDefinitions[(index + step) % gameDefinitions.length].id);
+    event.preventDefault();
+  }
+});
+
+document.addEventListener("keyup", (event) => {
+  if (activeGame?.keyup) {
+    activeGame.keyup(event);
+  }
+});
+
+canvas.addEventListener("pointermove", (event) => {
+  if (!activeGame?.pointermove) {
+    return;
+  }
+
+  const rect = canvas.getBoundingClientRect();
+  activeGame.pointermove({
+    x: event.clientX - rect.left,
+    y: event.clientY - rect.top
+  });
+});
+
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden && activeGame) {
+    const meta = activeGame.getMeta();
+
+    if (meta.status === "running" && meta.canPause) {
+      activeGame.togglePause();
+    }
   }
 });
 
@@ -2924,6 +3169,7 @@ document.addEventListener("fullscreenchange", () => {
 });
 
 resizeCanvas();
+updateCreditsReadout();
 switchGame(activeGameId);
 updateFullscreenButton();
 window.requestAnimationFrame(frame);

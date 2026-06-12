@@ -101,7 +101,7 @@ export function toggleMute() {
   localStorage.setItem(STORAGE_KEY, isMuted);
   const muteButton = document.querySelector("#muteButton");
   if (muteButton) {
-    muteButton.textContent = isMuted ? "🔇" : "🔊";
+    muteButton.textContent = isMuted ? "SND OFF" : "SND ON";
   }
   return isMuted;
 }
@@ -114,7 +114,7 @@ export function isSoundMuted() {
 document.addEventListener("DOMContentLoaded", () => {
   const muteButton = document.querySelector("#muteButton");
   if (muteButton) {
-    muteButton.textContent = isMuted ? "🔇" : "🔊";
+    muteButton.textContent = isMuted ? "SND OFF" : "SND ON";
     muteButton.addEventListener("click", (e) => {
       e.preventDefault();
       toggleMute();

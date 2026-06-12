@@ -3,107 +3,105 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>LOOPCLUB — Five Neon Arcade Games</title>
+    <title>LOOPCLUB — After-Hours Arcade</title>
     <link rel="stylesheet" href="./css/styles.css">
   </head>
-  <body>
-    <main class="shell">
-      <section class="hero">
-        <div class="hero-copy">
-          <p class="eyebrow">LOOPCLUB</p>
-          <h1>Five Neon Cabinets.</h1>
-          <p class="hero-text">
-            Members only. Pick your station, press Enter or Space, and keep the loop alive.
-          </p>
+  <body data-game="snake">
+    <div class="shell">
+      <header class="topbar">
+        <div class="brand">
+          <span class="brand-mark">LOOPCLUB</span>
+          <span class="brand-sub">after-hours arcade · 8 cabinets</span>
         </div>
-        <div class="hero-strip" aria-label="Available arcade cabinets">
-          <span>Snake</span>
-          <span>Meteor</span>
-          <span>Memory</span>
-          <span>Blackout</span>
-          <span>Cipher</span>
+        <div class="topbar-status">
+          <span class="credit-readout">CREDITS <strong id="creditsValue">00</strong></span>
+          <button id="muteButton" type="button" class="chip" title="Toggle sound (M)">SND</button>
+          <button id="fullscreenButton" type="button" class="chip" title="Fullscreen (F)">FULL</button>
         </div>
-      </section>
+      </header>
 
-      <section class="arcade-layout">
-        <aside class="rail">
-          <section class="panel">
-            <p class="panel-label">Cabinet Select</p>
-            <div id="gamePicker" class="picker" aria-label="Game select"></div>
-          </section>
+      <nav id="gamePicker" class="cabinet-row" aria-label="Cabinet select"></nav>
 
-          <section class="panel">
-            <p class="panel-label">Mode Dial</p>
-            <div id="modePicker" class="mode-picker" aria-label="Mode select"></div>
-          </section>
-
-          <section class="stats-grid" aria-label="Game stats">
-            <article class="stat-card">
-              <span id="scoreLabel">Score</span>
-              <strong id="scoreValue">0</strong>
-            </article>
-            <article class="stat-card">
-              <span id="bestLabel">Best</span>
-              <strong id="bestValue">0</strong>
-            </article>
-            <article class="stat-card">
-              <span id="modeLabel">Mode</span>
-              <strong id="modeValue">Classic</strong>
-            </article>
-            <article class="stat-card">
-              <span id="metaLabel">Tempo</span>
-              <strong id="metaValue">140 ms</strong>
-            </article>
-          </section>
-
-          <section class="panel panel-status">
-            <p class="panel-label">Run Feed</p>
-            <p id="statusText" class="status-copy">Loading arcade systems.</p>
-          </section>
-        </aside>
-
-        <section class="stage">
-          <header class="stage-header">
-            <div>
-              <p id="gameTag" class="stage-tag">Precision Grid</p>
-              <h2 id="gameTitle">Snake</h2>
-              <p id="gameSubtitle" class="stage-subtitle">Choose a cabinet, then press Enter or Space to bring the stage live.</p>
-            </div>
-            <div class="stage-actions">
-              <button id="muteButton" type="button" class="button button-secondary" title="Toggle sound">🔊</button>
-              <button id="pauseButton" type="button" class="button button-secondary">Pause</button>
-              <button id="fullscreenButton" type="button" class="button button-secondary">Full Screen</button>
-              <button id="restartButton" type="button" class="button button-primary">Restart</button>
-            </div>
-          </header>
-
-          <div class="canvas-shell">
-            <canvas id="gameCanvas" aria-label="Arcade game area"></canvas>
+      <main class="stage">
+        <header class="stage-head">
+          <div class="stage-id">
+            <p id="gameTag" class="stage-kicker">Grid Runner</p>
+            <h1 id="gameTitle">Snake</h1>
+            <p id="gameSubtitle" class="stage-sub">Pick a cabinet, then press Enter or Space.</p>
           </div>
+          <div class="stage-side">
+            <div id="modePicker" class="mode-tabs" aria-label="Mode select"></div>
+            <div class="stage-actions">
+              <button id="pauseButton" type="button" class="btn">Pause</button>
+              <button id="restartButton" type="button" class="btn btn-acc">Restart</button>
+            </div>
+          </div>
+        </header>
 
-          <footer class="stage-footer">
-            <section id="controlDeck" class="panel control-panel" aria-label="Touch controls">
-              <p class="panel-label">Touch Deck</p>
-              <div class="control-pad">
-                <button type="button" class="control control-up" data-control="up">↑</button>
-                <button type="button" class="control control-left" data-control="left">←</button>
-                <button type="button" class="control control-down" data-control="down">↓</button>
-                <button type="button" class="control control-right" data-control="right">→</button>
-              </div>
-            </section>
-
-            <section class="panel help-panel">
-              <p class="panel-label">Cabinet Notes</p>
-              <p id="controlHint" class="help-copy">Arrow keys or WASD move. Space pauses.</p>
-              <p id="gameNote" class="help-copy help-copy-muted">Classic Snake stays true to the original board rules.</p>
-            </section>
-          </footer>
+        <section class="hud-strip" aria-label="Run stats">
+          <div class="hud-cell">
+            <span id="scoreLabel" class="hud-label">Score</span>
+            <strong id="scoreValue" class="hud-value hud-score">000000</strong>
+          </div>
+          <div class="hud-cell">
+            <span class="hud-label">Hi-Score</span>
+            <strong class="hud-value"><span id="bestValue">000000</span><em id="bestInitials" class="hud-initials">---</em></strong>
+          </div>
+          <div class="hud-cell">
+            <span class="hud-label">Mode</span>
+            <strong id="modeValue" class="hud-value">Classic</strong>
+          </div>
+          <div class="hud-cell">
+            <span id="metaLabel" class="hud-label">Tempo</span>
+            <strong id="metaValue" class="hud-value">140 ms</strong>
+          </div>
         </section>
-      </section>
-    </main>
 
-    <script type="module" src="./js/sfx.js"></script>
-    <script type="module" src="./js/juice.js"></script>
+        <section class="crt">
+          <div class="crt-screen">
+            <canvas id="gameCanvas" aria-label="Game screen"></canvas>
+            <div class="crt-overlay" aria-hidden="true"></div>
+          </div>
+          <div class="crt-marquee">
+            <span class="led" aria-hidden="true"></span>
+            <p id="statusText" aria-live="polite">Booting arcade systems.</p>
+          </div>
+        </section>
+
+        <footer class="stage-foot">
+          <section id="controlDeck" class="deck" aria-label="Touch controls">
+            <p class="foot-label">Touch Deck</p>
+            <div class="control-pad">
+              <button type="button" class="control control-up" data-control="up">↑</button>
+              <button type="button" class="control control-left" data-control="left">←</button>
+              <button type="button" class="control control-down" data-control="down">↓</button>
+              <button type="button" class="control control-right" data-control="right">→</button>
+            </div>
+          </section>
+
+          <section class="notes">
+            <p class="foot-label">Cabinet Notes</p>
+            <p id="controlHint" class="note">Arrow keys or WASD move. Space pauses.</p>
+            <p id="gameNote" class="note muted">Classic Snake stays true to the original board rules.</p>
+            <p class="note keys">R restart · P pause · M sound · F fullscreen · [ ] switch cabinet</p>
+          </section>
+        </footer>
+      </main>
+    </div>
+
+    <div id="initialsModal" class="initials hidden" role="dialog" aria-modal="true" aria-label="New high score">
+      <div class="initials-card">
+        <p class="initials-kicker">New Hi-Score</p>
+        <p id="initialsScore" class="initials-score">000000</p>
+        <div class="initials-slots">
+          <span class="slot"></span>
+          <span class="slot"></span>
+          <span class="slot"></span>
+        </div>
+        <p class="initials-hint">Type 3 letters · Enter saves · Esc skips</p>
+      </div>
+    </div>
+
     <script type="module" src="./js/arcade.js"></script>
   </body>
 </html>

@@ -10,24 +10,26 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**Signal Room Arcade** is a browser-based mini-game collection featuring five arcade-style games, each with multiple difficulty modes. Games are playable with keyboard, mouse/touch, and support fullscreen. Scores persist to localStorage per game/mode.
+**LOOPCLUB** is a browser-based mini-game collection featuring eight arcade-style games (Snake, Meteor, Pulse, Blackout, Cipher, Flappy, Pong, Ascent), each with multiple difficulty modes. Games are playable with keyboard, mouse/touch, and support fullscreen. Hi-scores persist to localStorage per game/mode with arcade-style 3-letter initials, and a credits counter tracks total runs.
 
 ## Architecture
 
 ### Core Files
 
-- **`index.html`**: Page structure, canvas target, UI panels (game picker, mode select, stats grid, touch controls).
-- **`js/arcade.js`**: Main game controller (~1100 lines). Handles game lifecycle, rendering loop, UI updates, input routing, score persistence.
-- **`js/snake-logic.js`**: Game-agnostic state machine for the Snake game (grid-based movement, collision, food placement).
-- **`css/styles.css`**: Design system with CSS variables (color palette, shadows, spacing), layout grid, and component styles.
+- **`index.html`**: Page structure — topbar, cabinet row (game picker), stage with CRT bezel + canvas, HUD strip, mode tabs, touch controls, initials modal.
+- **`js/arcade.js`**: Main game controller (~3000 lines). Handles game lifecycle, rendering loop, HUD updates, input routing (including global shortcuts R/P/M/F and `[`/`]` cabinet switching), hi-score + initials persistence, credits, auto-pause on tab hide.
+- **`js/snake-logic.js`**: Game-agnostic state machine for the Snake game (grid-based movement, collision, food placement). Also exports `DIRECTION_VECTORS`, used by Cipher and the snake head's eyes.
+- **`js/sfx.js`**: WebAudio mini-synth for sound effects plus mute toggle (persisted under `loopclub-muted`).
+- **`js/juice.js`**: DOM motion helpers (shake, burst particles).
+- **`css/styles.css`**: Design system. One accent color at a time via the `--acc` CSS variable, set per cabinet by `applyAccent()` in arcade.js. Pixel font (Silkscreen) for display values, JetBrains Mono elsewhere. CRT effects (scanlines, grille, vignette, sweep) are CSS overlays scoped to `.crt-screen`.
 
 ### High-Level Flow
 
-1. **Initialization**: Arcade loads game definitions, renders the game/mode picker UI, initializes the first game (Snake/Classic).
-2. **Game Lifecycle**: User selects a game → `switchGame()` instantiates it via `definition.create(mode)` → game runs in the main render loop.
-3. **Frame Loop**: `requestAnimationFrame(frame)` runs continuously. Each frame: calls `activeGame.update(deltaMs)`, `activeGame.render(ctx, time)`, then `renderHud()` to refresh UI.
-4. **Input Handling**: Keyboard events route to `activeGame.keydown()` or convert to control actions. Touch buttons call `activeGame.action()`. Space/Enter launch or pause.
-5. **Scoring**: `syncBest()` tracks high scores per game/mode in localStorage under key `"ultra-arcade-scores-v1"`.
+1. **Initialization**: Arcade loads game definitions, renders the cabinet/mode picker UI, initializes the first game (Snake/Classic).
+2. **Game Lifecycle**: User selects a cabinet → `switchGame()` instantiates it via `definition.create(mode)`, re-tints the UI via `applyAccent()`, and plays a CRT boot animation.
+3. **Frame Loop**: `requestAnimationFrame(frame)` runs continuously. Each frame: calls `activeGame.update(deltaMs)`, `activeGame.render(ctx, time)`, then `renderHud()`. The loop watches `meta.status` transitions to count credits on run start and open the initials modal on a new record.
+4. **Input Handling**: Keyboard events route to `activeGame.keydown()` first; unclaimed keys fall through to global shortcuts (R restart, P pause, M mute, F fullscreen, `[`/`]` switch cabinet). `keyup` and `pointermove` are dispatched to games that expose them (Pong, Ascent). Touch buttons call `activeGame.action()`.
+5. **Scoring**: `syncBest()` tracks hi-scores per game/mode in localStorage; every game's `getMeta()` must include a `status` field ("ready" | "running" | "paused" | "game-over" | "won") for the run-lifecycle detection.
 
 ### Game Definition Pattern
 
@@ -56,9 +58,12 @@ The `create(mode)` function returns a game instance with this interface:
 ```javascript
 {
   action(control)           // Called by touch buttons; control = "up"|"down"|"left"|"right"
-  getMeta()                 // Returns { score, scoreLabel, metricValue, canPause, isPaused, ... }
+  getMeta()                 // Returns { score, scoreLabel, metricValue, canPause, isPaused, status, ... }
+                            // status is REQUIRED: "ready"|"running"|"paused"|"game-over"|"won"
   keydown(event)            // Called on key press; return true if handled
-  pointerdown()             // Optional pointer handler
+  keyup(event)              // Optional; dispatched globally (used by Pong, Ascent)
+  pointerdown(point)        // Optional pointer handler
+  pointermove(point)        // Optional; canvas-relative coords (Pong paddle follows the mouse)
   render(ctx, time)         // Draw to canvas (ctx = 2D context, time = elapsed seconds)
   restart()                 // Reset game state
   togglePause()             // Toggle pause state
@@ -106,26 +111,24 @@ The `create(mode)` function returns a game instance with this interface:
 
 ## UI & Styling
 
-- **Design System**: CSS variables in `:root` for color (--ink, --signal, --mint, --navy, etc.), shadows, and radius.
-- **Layout**: Flexbox-based layout with a rail sidebar and central stage. Hero section at top with game feature strip.
-- **Picker Buttons**: Game and mode pickers use `.picker-button` and `.mode-button` classes; `.is-active` indicates selection.
+- **Design System**: CSS variables in `:root` — surfaces (`--bg`, `--panel`, `--edge`), text (`--text`, `--dim`, `--faint`), and the single live accent `--acc`. Per-cabinet accents live on `gameDefinitions[].accent` and are applied to cards via `--card-acc`.
+- **Layout**: Topbar → cabinet row → stage (head, HUD strip, CRT, footer). No sidebar.
+- **Pickers**: Cabinet cards use `.cab` (pixel SVG icon + title + hi-score); mode tabs are plain buttons inside `.mode-tabs`; `.is-active` indicates selection.
 - **Touch Controls**: `.control-pad` has directional buttons. Visibility is toggled by `controlDeck.classList.toggle("is-hidden")` based on game's `controlPadHidden` flag.
-- **Stat Cards**: `.stat-card` shows score, best, mode, and metric (tempo, etc.).
+- **HUD Strip**: `.hud-cell` cells show score, hi-score (+ initials), mode, and metric. Scores are zero-padded 6 digits via `formatScore()`.
 
 ## Storage
 
-Scores are stored in localStorage under the key `"ultra-arcade-scores-v1"` as a flat JSON object:
+Hi-scores are stored in localStorage under `"loopclub-hiscores-v1"`:
 
 ```json
 {
-  "snake:classic": 25,
-  "snake:wrap": 18,
-  "dodge:cruise": 150,
-  ...
+  "snake:classic": { "score": 25, "initials": "ACE" },
+  "dodge:cruise": { "score": 150, "initials": "---" }
 }
 ```
 
-Key format is `gameId:modeId`. Failures to read/write are silently ignored to keep the arcade playable offline.
+Key format is `gameId:modeId`. Legacy plain-number scores under `"ultra-arcade-scores-v1"` are migrated on load (initials default to `"---"`). The run counter lives under `"loopclub-credits-v1"` and the mute flag under `"loopclub-muted"`. Failures to read/write are silently ignored to keep the arcade playable offline.
 
 ## Browser Compatibility
 
@@ -138,7 +141,7 @@ Key format is `gameId:modeId`. Failures to read/write are silently ignored to ke
 1. **Edit game logic or UI**: Modify `.js` or `.css` directly.
 2. **Refresh browser** (Ctrl+R or Cmd+R) to reload.
 3. **Debug in DevTools**: Breakpoints, console logging, canvas inspection.
-4. **Test scoring**: Open DevTools → Application → LocalStorage, check `"ultra-arcade-scores-v1"`.
+4. **Test scoring**: Open DevTools → Application → LocalStorage, check `"loopclub-hiscores-v1"`.
 5. **Test responsiveness**: Resize window or use device emulation; canvas scales automatically.
 
 ## Common Tasks
