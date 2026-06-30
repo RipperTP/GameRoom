@@ -115,11 +115,11 @@ const gameDefinitions = [
     accent: "#e9e9ee",
     kicker: "Black Cabinet",
     title: "Blackout",
-    summary: "One ball, one paddle, no color. Keep the rally.",
+    summary: "Wave breaker. Clear bricks, level up, stack combos. Multi-ball madness awaits.",
     icon: '<svg viewBox="0 0 16 16" aria-hidden="true"><rect x="2" y="2" width="4" height="2"/><rect x="7" y="2" width="4" height="2"/><rect x="12" y="2" width="2" height="2"/><rect x="7" y="8" width="2" height="2"/><rect x="4" y="13" width="8" height="2"/></svg>',
     modes: [
-      { id: "night", label: "Night", summary: "Wider paddle, balanced speed, clean monochrome pacing." },
-      { id: "hardcut", label: "Hard Cut", summary: "Faster rebounds, tighter paddle, no room for error." }
+      { id: "night", label: "Night", summary: "3 lives. Clear waves to level up. Stack your combo to multiply every break." },
+      { id: "hardcut", label: "Hard Cut", summary: "2 lives. Faster ball, tighter paddle. Multi-ball arrives earlier." }
     ],
     create: createBlackoutGame
   },
@@ -1621,41 +1621,70 @@ function createBlackoutGame(mode) {
   const config = {
     night: {
       accent: "#f5f7fb",
-      ballSpeed: 300,
+      baseBallSpeed: 280,
       paddleStep: 46,
       paddleWidth: 136,
-      targetColumns: 5
+      targetColumns: 5,
+      maxLives: 3,
+      speedPerLevel: 0.07,
+      maxSpeed: 580,
+      maxMultiplier: 5
     },
     hardcut: {
       accent: "#f59e0b",
-      ballSpeed: 352,
+      baseBallSpeed: 340,
       paddleStep: 38,
       paddleWidth: 108,
-      targetColumns: 6
+      targetColumns: 6,
+      maxLives: 2,
+      speedPerLevel: 0.10,
+      maxSpeed: 680,
+      maxMultiplier: 8
     }
   }[mode.id];
 
   const world = { height: 1000, width: 1000 };
   const ballRadius = 12;
   const paddleHeight = 18;
-  const paddleY = 912;
-  const targetGap = 18;
+  const paddleY = 920;
+  const targetGap = 12;
   const targetHeight = 18;
+  const COMBO_THRESHOLDS = [0, 3, 8, 15, 24, 35];
 
-  function createTargets() {
-    const width = config.targetColumns === 6 ? 104 : 118;
-    const totalWidth = config.targetColumns * width + (config.targetColumns - 1) * targetGap;
-    const startX = (world.width - totalWidth) / 2;
+  function getMultiplier(combo) {
+    let m = 1;
+    for (let i = 1; i < COMBO_THRESHOLDS.length; i++) {
+      if (combo >= COMBO_THRESHOLDS[i]) m = i + 1;
+    }
+    return Math.min(m, config.maxMultiplier);
+  }
+
+  function getBallSpeed(level) {
+    return Math.min(config.baseBallSpeed * Math.pow(1 + config.speedPerLevel, level - 1), config.maxSpeed);
+  }
+
+  function createTargets(level) {
+    const rows = Math.min(2 + Math.floor((level - 1) / 2), 7);
+    const cols = config.targetColumns;
+    const totalAvail = world.width - 160;
+    const width = Math.floor((totalAvail - (cols - 1) * targetGap) / cols);
+    const startX = (world.width - (cols * width + (cols - 1) * targetGap)) / 2;
     const targets = [];
 
-    for (let row = 0; row < 2; row += 1) {
-      for (let column = 0; column < config.targetColumns; column += 1) {
+    for (let row = 0; row < rows; row++) {
+      for (let col = 0; col < cols; col++) {
+        const isArmored =
+          (mode.id === "hardcut" && level >= 3 && row === 0) ||
+          (mode.id === "night" && level >= 5 && row === 0) ||
+          (level >= 7 && row <= 1);
         targets.push({
           height: targetHeight,
+          hitsLeft: isArmored ? 2 : 1,
+          maxHits: isArmored ? 2 : 1,
           live: true,
           width,
-          x: startX + column * (width + targetGap),
-          y: 150 + row * 54
+          x: startX + col * (width + targetGap),
+          y: 120 + row * (targetHeight + 16)
         });
       }
     }
@@ -1663,27 +1692,36 @@ function createBlackoutGame(mode) {
     return targets;
   }
 
-  function createRunState(status = "ready") {
+  function makeBall(level, offsetX = 0) {
+    const speed = getBallSpeed(level);
+    const angle = (0.2 + Math.random() * 0.6) * Math.PI;
     return {
-      ball: {
-        vx: (Math.random() > 0.5 ? 1 : -1) * config.ballSpeed * 0.72,
-        vy: -config.ballSpeed,
-        x: world.width / 2,
-        y: world.height * 0.68
-      },
-      paddleX: world.width / 2,
-      score: 0,
-      status,
-      streak: 0,
-      targets: createTargets()
+      x: world.width / 2 + offsetX,
+      y: world.height * 0.65,
+      vx: Math.cos(angle) * speed * (Math.random() > 0.5 ? 1 : -1),
+      vy: -Math.abs(Math.sin(angle)) * speed
     };
   }
 
-  function intersectsCircle(rect, circleX, circleY, radius) {
-    const closestX = clamp(circleX, rect.x, rect.x + rect.width);
-    const closestY = clamp(circleY, rect.y, rect.y + rect.height);
-    const dx = circleX - closestX;
-    const dy = circleY - closestY;
+  function createRunState(status = "ready") {
+    return {
+      balls: [makeBall(1)],
+      combo: 0,
+      level: 1,
+      levelFlash: 0,
+      lives: config.maxLives,
+      paddleX: world.width / 2,
+      score: 0,
+      status,
+      targets: createTargets(1)
+    };
+  }
+
+  function intersectsCircle(rect, cx, cy, radius) {
+    const closestX = clamp(cx, rect.x, rect.x + rect.width);
+    const closestY = clamp(cy, rect.y, rect.y + rect.height);
+    const dx = cx - closestX;
+    const dy = cy - closestY;
     return dx * dx + dy * dy <= radius * radius;
   }
 
@@ -1698,12 +1736,10 @@ function createBlackoutGame(mode) {
       state = { ...state, status: "running" };
       return true;
     }
-
     if (state.status === "game-over") {
       state = createRunState("running");
       return true;
     }
-
     return false;
   }
 
@@ -1712,20 +1748,15 @@ function createBlackoutGame(mode) {
       state = { ...state, status: "paused" };
       return true;
     }
-
     if (state.status === "paused") {
       state = { ...state, status: "running" };
       return true;
     }
-
     return false;
   }
 
   function move(delta) {
-    if (state.status === "game-over") {
-      return false;
-    }
-
+    if (state.status === "game-over") return false;
     const halfWidth = config.paddleWidth / 2;
     state = {
       ...state,
@@ -1735,81 +1766,110 @@ function createBlackoutGame(mode) {
   }
 
   function update(deltaMs) {
-    if (state.status !== "running") {
-      return;
-    }
+    if (state.status !== "running") return;
 
-    const deltaSeconds = deltaMs / 1000;
-    const nextBall = {
-      ...state.ball,
-      x: state.ball.x + state.ball.vx * deltaSeconds,
-      y: state.ball.y + state.ball.vy * deltaSeconds
-    };
-
-    let nextTargets = state.targets;
-    let nextScore = state.score;
-    let nextStreak = state.streak;
-    let nextStatus = state.status;
-
-    if (nextBall.x <= 70 + ballRadius || nextBall.x >= world.width - 70 - ballRadius) {
-      nextBall.x = clamp(nextBall.x, 70 + ballRadius, world.width - 70 - ballRadius);
-      nextBall.vx *= -1;
-    }
-
-    if (nextBall.y <= 90 + ballRadius) {
-      nextBall.y = 90 + ballRadius;
-      nextBall.vy = Math.abs(nextBall.vy);
-    }
-
-    const halfWidth = config.paddleWidth / 2;
+    const dt = deltaMs / 1000;
+    const halfW = config.paddleWidth / 2;
     const paddleRect = {
       height: paddleHeight,
       width: config.paddleWidth,
-      x: state.paddleX - halfWidth,
+      x: state.paddleX - halfW,
       y: paddleY - paddleHeight / 2
     };
 
-    if (
-      nextBall.vy > 0 &&
-      intersectsCircle(paddleRect, nextBall.x, nextBall.y, ballRadius)
-    ) {
-      const offset = (nextBall.x - state.paddleX) / halfWidth;
-      nextBall.y = paddleRect.y - ballRadius;
-      nextBall.vy = -Math.abs(nextBall.vy);
-      nextBall.vx = clamp(nextBall.vx + offset * 220, -520, 520);
-      nextScore += 1;
-      nextStreak += 1;
-    }
+    let nextTargets = state.targets.map((t) => ({ ...t }));
+    let nextScore = state.score;
+    let nextCombo = state.combo;
+    let nextLives = state.lives;
+    let nextStatus = state.status;
+    let nextLevel = state.level;
+    let nextLevelFlash = Math.max(0, state.levelFlash - deltaMs);
+    const survivingBalls = [];
 
-    for (let index = 0; index < nextTargets.length; index += 1) {
-      const target = nextTargets[index];
+    for (const sourceBall of state.balls) {
+      const ball = { ...sourceBall };
+      ball.x += ball.vx * dt;
+      ball.y += ball.vy * dt;
 
-      if (!target.live || !intersectsCircle(target, nextBall.x, nextBall.y, ballRadius)) {
-        continue;
+      if (ball.x <= 70 + ballRadius) {
+        ball.x = 70 + ballRadius;
+        ball.vx = Math.abs(ball.vx);
+      } else if (ball.x >= world.width - 70 - ballRadius) {
+        ball.x = world.width - 70 - ballRadius;
+        ball.vx = -Math.abs(ball.vx);
       }
 
-      nextBall.vy *= -1;
-      nextTargets = nextTargets.map((item, itemIndex) => (itemIndex === index ? { ...item, live: false } : item));
-      nextScore += 5;
-      nextStreak += 1;
-      break;
+      if (ball.y <= 90 + ballRadius) {
+        ball.y = 90 + ballRadius;
+        ball.vy = Math.abs(ball.vy);
+      }
+
+      if (ball.vy > 0 && intersectsCircle(paddleRect, ball.x, ball.y, ballRadius)) {
+        const offset = (ball.x - state.paddleX) / halfW;
+        ball.y = paddleRect.y - ballRadius;
+        ball.vy = -Math.abs(ball.vy);
+        ball.vx = clamp(ball.vx + offset * 240, -720, 720);
+        nextScore += getMultiplier(nextCombo);
+      }
+
+      for (let ti = 0; ti < nextTargets.length; ti++) {
+        const target = nextTargets[ti];
+        if (!target.live || !intersectsCircle(target, ball.x, ball.y, ballRadius)) continue;
+        ball.vy *= -1;
+        nextCombo += 1;
+        nextScore += 5 * getMultiplier(nextCombo);
+        nextTargets[ti] =
+          target.hitsLeft > 1
+            ? { ...target, hitsLeft: target.hitsLeft - 1 }
+            : { ...target, live: false };
+        break;
+      }
+
+      if (ball.y - ballRadius <= world.height + 20) {
+        survivingBalls.push(ball);
+      }
     }
 
-    if (nextTargets.length > 0 && nextTargets.every((target) => !target.live)) {
-      nextTargets = createTargets();
-      nextScore += 12;
+    if (survivingBalls.length === 0) {
+      nextLives -= 1;
+      nextCombo = 0;
+      if (nextLives <= 0) {
+        nextStatus = "game-over";
+      } else {
+        survivingBalls.push(makeBall(nextLevel));
+      }
     }
 
-    if (nextBall.y - ballRadius > world.height + 20) {
-      nextStatus = "game-over";
+    if (nextStatus !== "game-over" && nextTargets.every((t) => !t.live)) {
+      nextLevel += 1;
+      nextTargets = createTargets(nextLevel);
+      nextScore += 25 * nextLevel;
+      nextLevelFlash = 1800;
+
+      if (nextLevel % 3 === 0 && survivingBalls.length < 3) {
+        survivingBalls.push(makeBall(nextLevel, survivingBalls.length === 1 ? -40 : 40));
+      }
+
+      const newSpeed = getBallSpeed(nextLevel);
+      for (const ball of survivingBalls) {
+        const currentSpeed = Math.hypot(ball.vx, ball.vy);
+        if (currentSpeed > 0) {
+          const ratio = newSpeed / currentSpeed;
+          ball.vx *= ratio;
+          ball.vy *= ratio;
+        }
+      }
     }
 
     state = {
       ...state,
-      ball: nextBall,
+      balls: survivingBalls,
+      combo: nextCombo,
+      level: nextLevel,
+      levelFlash: nextLevelFlash,
+      lives: nextLives,
       score: nextScore,
       status: nextStatus,
-      streak: nextStreak,
       targets: nextTargets
     };
   }
@@ -1818,67 +1878,51 @@ function createBlackoutGame(mode) {
     if (event.key === "ArrowLeft" || event.key === "a" || event.key === "A") {
       return move(-config.paddleStep);
     }
-
     if (event.key === "ArrowRight" || event.key === "d" || event.key === "D") {
       return move(config.paddleStep);
     }
-
     if (event.code === "Space") {
-      if (state.status === "ready" || state.status === "game-over") {
-        return launch();
-      }
-
+      if (state.status === "ready" || state.status === "game-over") return launch();
       return togglePause();
     }
-
     if (event.key === "Enter" && (state.status === "ready" || state.status === "game-over")) {
       return launch();
     }
-
     return false;
   }
 
-  function render(ctx) {
+  function render(ctx, time) {
     drawStageBackdrop(ctx, { accentColor: config.accent });
 
     const board = getGridMetrics(20, 20, 92);
     const scale = board.width / world.width;
+
     fillRoundedRect(ctx, board.x - 18, board.y - 18, board.width + 36, board.height + 36, 18, "rgba(8, 8, 8, 0.92)");
     strokeRoundedRect(ctx, board.x - 18, board.y - 18, board.width + 36, board.height + 36, 18, "rgba(255, 255, 255, 0.1)");
     fillRoundedRect(ctx, board.x, board.y, board.width, board.height, 12, "#030303");
 
-    ctx.strokeStyle = "rgba(255, 255, 255, 0.08)";
+    ctx.strokeStyle = "rgba(255, 255, 255, 0.06)";
     ctx.lineWidth = 1;
-
-    for (let index = 0; index <= 20; index += 1) {
-      const position = board.x + (board.width / 20) * index + 0.5;
-      const vertical = board.y + (board.height / 20) * index + 0.5;
-
-      ctx.beginPath();
-      ctx.moveTo(position, board.y);
-      ctx.lineTo(position, board.y + board.height);
-      ctx.stroke();
-
-      ctx.beginPath();
-      ctx.moveTo(board.x, vertical);
-      ctx.lineTo(board.x + board.width, vertical);
-      ctx.stroke();
+    for (let i = 0; i <= 20; i++) {
+      const px = board.x + (board.width / 20) * i + 0.5;
+      const py = board.y + (board.height / 20) * i + 0.5;
+      ctx.beginPath(); ctx.moveTo(px, board.y); ctx.lineTo(px, board.y + board.height); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(board.x, py); ctx.lineTo(board.x + board.width, py); ctx.stroke();
     }
 
     for (const target of state.targets) {
-      if (!target.live) {
-        continue;
+      if (!target.live) continue;
+      const tx = board.x + target.x * scale;
+      const ty = board.y + target.y * scale;
+      const tw = target.width * scale;
+      const th = target.height * scale;
+      if (target.maxHits > 1) {
+        const alpha = target.hitsLeft === 2 ? 0.32 : 0.75;
+        fillRoundedRect(ctx, tx, ty, tw, th, 4, `rgba(255, 255, 255, ${alpha})`);
+        strokeRoundedRect(ctx, tx, ty, tw, th, 4, "rgba(255, 255, 255, 0.88)");
+      } else {
+        fillRoundedRect(ctx, tx, ty, tw, th, 4, "rgba(255, 255, 255, 0.92)");
       }
-
-      fillRoundedRect(
-        ctx,
-        board.x + target.x * scale,
-        board.y + target.y * scale,
-        target.width * scale,
-        target.height * scale,
-        6,
-        "rgba(255, 255, 255, 0.92)"
-      );
     }
 
     fillRoundedRect(
@@ -1892,23 +1936,85 @@ function createBlackoutGame(mode) {
     );
 
     ctx.fillStyle = "#f6f7fb";
-    ctx.shadowBlur = 18;
-    ctx.shadowColor = "rgba(255, 255, 255, 0.3)";
-    ctx.beginPath();
-    ctx.arc(board.x + state.ball.x * scale, board.y + state.ball.y * scale, ballRadius * scale, 0, Math.PI * 2);
-    ctx.fill();
+    for (const ball of state.balls) {
+      ctx.shadowBlur = 20;
+      ctx.shadowColor = "rgba(255, 255, 255, 0.45)";
+      ctx.beginPath();
+      ctx.arc(board.x + ball.x * scale, board.y + ball.y * scale, ballRadius * scale, 0, Math.PI * 2);
+      ctx.fill();
+    }
     ctx.shadowBlur = 0;
 
-    ctx.fillStyle = "rgba(255, 255, 255, 0.92)";
+    // Lives indicator (bottom-left of board)
+    const livesY = board.y + board.height - 22;
+    for (let i = 0; i < config.maxLives; i++) {
+      const lx = board.x + 14 + i * 18;
+      ctx.beginPath();
+      ctx.arc(lx, livesY, 5, 0, Math.PI * 2);
+      if (i < state.lives) {
+        ctx.fillStyle = "rgba(255, 255, 255, 0.9)";
+        ctx.fill();
+      } else {
+        ctx.lineWidth = 1;
+        ctx.strokeStyle = "rgba(255, 255, 255, 0.22)";
+        ctx.stroke();
+      }
+    }
+
+    // Multiplier (bottom-right of board, pulses when active)
+    const multiplier = getMultiplier(state.combo);
+    if (multiplier > 1) {
+      const pulse = 0.82 + 0.18 * Math.sin(time * 5);
+      ctx.save();
+      ctx.globalAlpha = pulse;
+      ctx.font = 'bold 13px "Silkscreen", monospace';
+      ctx.fillStyle = config.accent;
+      ctx.textAlign = "right";
+      ctx.fillText(`x${multiplier}`, board.x + board.width - 10, livesY + 4);
+      ctx.textAlign = "left";
+      ctx.restore();
+    }
+
+    // Top labels: mode name left, level right
+    ctx.fillStyle = "rgba(255, 255, 255, 0.7)";
     ctx.font = '10px "Silkscreen", "JetBrains Mono", monospace';
-    ctx.fillText(mode.label.toUpperCase(), board.x, board.y - 30);
+    ctx.textAlign = "left";
+    ctx.fillText(mode.label.toUpperCase(), board.x, board.y - 28);
+    ctx.textAlign = "right";
+    ctx.fillText(`LV${state.level}`, board.x + board.width, board.y - 28);
+    ctx.textAlign = "left";
+
+    // Multi-ball indicator (centered top)
+    if (state.balls.length > 1) {
+      ctx.fillStyle = "rgba(255, 255, 255, 0.55)";
+      ctx.font = '9px "Silkscreen", monospace';
+      ctx.textAlign = "center";
+      ctx.fillText(`${state.balls.length}x BALL`, board.x + board.width / 2, board.y - 28);
+      ctx.textAlign = "left";
+    }
+
+    // Level clear flash
+    if (state.levelFlash > 0 && state.status === "running") {
+      const alpha = Math.min(state.levelFlash / 350, 1) * 0.92;
+      ctx.save();
+      ctx.globalAlpha = alpha;
+      const cx = board.x + board.width / 2;
+      const cy = board.y + board.height / 2;
+      fillRoundedRect(ctx, cx - 96, cy - 28, 192, 56, 10, "rgba(0, 0, 0, 0.78)");
+      ctx.fillStyle = config.accent;
+      ctx.font = 'bold 20px "Silkscreen", monospace';
+      ctx.textAlign = "center";
+      ctx.fillText(`LEVEL  ${state.level}`, cx, cy + 7);
+      ctx.textAlign = "left";
+      ctx.restore();
+    }
 
     if (state.status === "ready") {
       drawOverlayCard(ctx, "Ready", "Press Enter or Space to start the rally.", config.accent);
     } else if (state.status === "paused") {
-      drawOverlayCard(ctx, "Paused", "Resume when you want the rally back.", config.accent);
+      drawOverlayCard(ctx, "Paused", "Resume when ready.", config.accent);
     } else if (state.status === "game-over") {
-      drawOverlayCard(ctx, "Drop", "Press Enter or Space to restart the rally.", config.accent);
+      drawOverlayCard(ctx, "Out", "Press Enter or Space to try again.", config.accent);
     }
   }
 
@@ -1924,20 +2030,19 @@ function createBlackoutGame(mode) {
 
   return {
     action(control) {
-      if (control === "left") {
-        return move(-config.paddleStep);
-      }
-
-      if (control === "right") {
-        return move(config.paddleStep);
-      }
-
+      if (control === "left") return move(-config.paddleStep);
+      if (control === "right") return move(config.paddleStep);
       return false;
     },
     getMeta() {
+      const multiplier = getMultiplier(state.combo);
+      const runningStatus =
+        `${state.lives} LIVES  ·  ` +
+        (multiplier > 1 ? `x${multiplier} COMBO (${state.combo})` : "Build your combo") +
+        (state.balls.length > 1 ? `  ·  ${state.balls.length} BALLS` : "");
       return {
         canPause: state.status === "running" || state.status === "paused",
-        controlHint: "Drag finger on screen or use Left/Right to move paddle. Space starts.",
+        controlHint: "Drag on screen or use Left/Right to move paddle. Space starts.",
         controls: {
           down: { enabled: false, label: "Locked" },
           left: { enabled: true, label: "Left" },
@@ -1946,8 +2051,8 @@ function createBlackoutGame(mode) {
         },
         controlPadHidden: false,
         isPaused: state.status === "paused",
-        metricLabel: "Rally",
-        metricValue: String(state.streak),
+        metricLabel: "LEVEL",
+        metricValue: String(state.level),
         noteText: mode.summary,
         score: state.score,
         scoreLabel: "Score",
@@ -1956,12 +2061,10 @@ function createBlackoutGame(mode) {
           state.status === "ready"
             ? "CREDIT READY · PRESS START"
             : state.status === "game-over"
-              ? "Ball dropped below the rail. R restarts."
+              ? "All lives lost. Press Enter or Space to restart."
               : state.status === "paused"
-                ? "Rally frozen. Space resumes."
-                : mode.id === "hardcut"
-                  ? "Tight paddle, fast returns. No room for error."
-                  : "Wide paddle, steady rhythm. Build the rally."
+                ? "Paused. Space or P to resume."
+                : runningStatus
       };
     },
     keydown,
@@ -1981,16 +2084,20 @@ function createCipherGame(mode) {
     trace: {
       accent: "#7dd3fc",
       baseHunters: 1,
-      maxHunters: 3,
-      minTickMs: 108,
-      tickMs: 176
+      maxHunters: 2,
+      minTickMs: 120,
+      tickMs: 195,
+      wanderChance: 0.30,
+      hunterSpawnEvery: 6
     },
     panic: {
       accent: "#f87171",
       baseHunters: 2,
-      maxHunters: 4,
-      minTickMs: 92,
-      tickMs: 144
+      maxHunters: 3,
+      minTickMs: 105,
+      tickMs: 158,
+      wanderChance: 0.18,
+      hunterSpawnEvery: 5
     }
   }[mode.id];
 
@@ -2146,7 +2253,10 @@ function createCipherGame(mode) {
       return hunter;
     }
 
-    const preferX = Math.abs(dx) > Math.abs(dy) || (Math.abs(dx) === Math.abs(dy) && tickOffset % 2 === 0);
+    const optimalPrefersX = Math.abs(dx) > Math.abs(dy) || (Math.abs(dx) === Math.abs(dy) && tickOffset % 2 === 0);
+    // Occasionally swap the preferred axis so hunters aren't perfectly optimal
+    const wander = Math.random() < config.wanderChance;
+    const preferX = wander ? !optimalPrefersX : optimalPrefersX;
 
     if (preferX && dx !== 0) {
       return { x: hunter.x + Math.sign(dx), y: hunter.y };
@@ -2189,9 +2299,9 @@ function createCipherGame(mode) {
 
     if (nextStatus === "running" && nextPickup && sameCell(nextPlayer, nextPickup)) {
       nextScore += 1;
-      tickMs = Math.max(config.minTickMs, config.tickMs - nextScore * 4);
+      tickMs = Math.max(config.minTickMs, config.tickMs - nextScore * 2);
 
-      if (nextScore % 4 === 0 && nextHunters.length < config.maxHunters) {
+      if (nextScore % config.hunterSpawnEvery === 0 && nextHunters.length < config.maxHunters) {
         const newHunter = createHunter(nextPlayer, nextHunters, nextPickup);
 
         if (newHunter) {
@@ -2616,16 +2726,20 @@ function createPongGame(mode) {
     normal: {
       accent: "#ff4f9a",
       accentColor: "#ff4f9a",
-      ballSpeed: 240,
+      ballSpeed: 260,
+      maxBallSpeed: 460,
       paddleSpeed: 420,
-      aiDelay: 0.1
+      aiSpeed: 200,
+      aiErrorMargin: 68
     },
     hardcore: {
       accent: "#ff2454",
       accentColor: "#ff2454",
-      ballSpeed: 300,
+      ballSpeed: 320,
+      maxBallSpeed: 540,
       paddleSpeed: 480,
-      aiDelay: 0.04
+      aiSpeed: 255,
+      aiErrorMargin: 38
     }
   }[mode.id];
 
@@ -2635,20 +2749,22 @@ function createPongGame(mode) {
   const paddleWidth = 12;
   const ballSize = 8;
 
+  function makePongBall() {
+    const speed = config.ballSpeed * 0.78;
+    const minVy = speed * 0.28;
+    const vy = (Math.random() > 0.5 ? 1 : -1) * (minVy + Math.random() * (speed * 0.55 - minVy));
+    const vx = (Math.random() > 0.5 ? 1 : -1) * Math.sqrt(speed * speed - vy * vy);
+    return { x: width / 2, y: height / 2, vx, vy };
+  }
+
   function createRunState(status = "ready") {
     return {
-      ball: {
-        x: width / 2,
-        y: height / 2,
-        vx: (Math.random() > 0.5 ? 1 : -1) * config.ballSpeed * 0.5,
-        vy: (Math.random() - 0.5) * config.ballSpeed * 0.5
-      },
+      ball: makePongBall(),
       playerY: height / 2 - paddleHeight / 2,
       aiY: height / 2 - paddleHeight / 2,
       playerScore: 0,
       aiScore: 0,
-      status,
-      aiTarget: height / 2
+      status
     };
   }
 
@@ -2709,24 +2825,26 @@ function createPongGame(mode) {
     let nextAiScore = state.aiScore;
 
     if (nextBall.x - ballSize < paddleWidth && nextBall.y > state.playerY && nextBall.y < state.playerY + paddleHeight && state.ball.x > paddleWidth) {
-      nextBall.vx *= -1.05;
+      const speed = Math.min(Math.abs(nextBall.vx) * 1.06, config.maxBallSpeed);
+      nextBall.vx = speed;
       nextBall.x = paddleWidth + ballSize;
       SFX.ping();
     }
 
     if (nextBall.x + ballSize > width - paddleWidth && nextBall.y > state.aiY && nextBall.y < state.aiY + paddleHeight && state.ball.x < width - paddleWidth) {
-      nextBall.vx *= -1.05;
+      const speed = Math.min(Math.abs(nextBall.vx) * 1.06, config.maxBallSpeed);
+      nextBall.vx = -speed;
       nextBall.x = width - paddleWidth - ballSize;
       SFX.ping();
     }
 
     if (nextBall.x < 0) {
       nextAiScore++;
-      nextBall = createRunState("running").ball;
+      nextBall = makePongBall();
     }
     if (nextBall.x > width) {
       nextPlayerScore++;
-      nextBall = createRunState("running").ball;
+      nextBall = makePongBall();
     }
 
     let nextPlayerY = state.playerY;
@@ -2734,13 +2852,12 @@ function createPongGame(mode) {
     if (held.down) nextPlayerY += config.paddleSpeed * deltaS;
     nextPlayerY = clamp(nextPlayerY, 0, height - paddleHeight);
 
-    let nextAiY = state.aiY;
-
-    const aiErrorMargin = mode.id === "hardcore" ? 20 : 40;
-    if (Math.random() > config.aiDelay) {
-      const target = nextBall.y + randomInt(-aiErrorMargin, aiErrorMargin);
-      nextAiY = clamp(state.aiY + (target - (state.aiY + paddleHeight / 2)) * 0.08, 0, height - paddleHeight);
-    }
+    // AI: speed-capped movement toward predicted ball position with error margin
+    const aiTarget = nextBall.y + randomInt(-config.aiErrorMargin, config.aiErrorMargin);
+    const aiCenter = state.aiY + paddleHeight / 2;
+    const aiMaxMove = config.aiSpeed * deltaS;
+    const aiDiff = aiTarget - aiCenter;
+    const nextAiY = clamp(state.aiY + clamp(aiDiff, -aiMaxMove, aiMaxMove), 0, height - paddleHeight);
 
     state = {
       ...state,
@@ -2749,7 +2866,7 @@ function createPongGame(mode) {
       aiScore: nextAiScore,
       playerY: nextPlayerY,
       aiY: nextAiY,
-      status: nextPlayerScore >= 11 || nextAiScore >= 11 ? "game-over" : "running"
+      status: nextPlayerScore >= 7 || nextAiScore >= 7 ? "game-over" : "running"
     };
   }
 
@@ -2818,7 +2935,7 @@ function createPongGame(mode) {
     ctx.textAlign = "left";
 
     if (state.status === "ready") {
-      drawOverlayCard(ctx, "Ready", "W/S to move, or follow the mouse. Space starts.", config.accent);
+      drawOverlayCard(ctx, "Ready", "W/S or Up/Down to move, or drag on screen. Space starts.", config.accent);
     } else if (state.status === "paused") {
       drawOverlayCard(ctx, "Paused", "Space to resume.", config.accent);
     } else if (state.status === "game-over") {
@@ -2830,11 +2947,11 @@ function createPongGame(mode) {
   return {
     action(control) {
       if (control === "up") {
-        state = { ...state, playerY: clamp(state.playerY - 48, 0, height - paddleHeight) };
+        state = { ...state, playerY: clamp(state.playerY - 58, 0, height - paddleHeight) };
         return true;
       }
       if (control === "down") {
-        state = { ...state, playerY: clamp(state.playerY + 48, 0, height - paddleHeight) };
+        state = { ...state, playerY: clamp(state.playerY + 58, 0, height - paddleHeight) };
         return true;
       }
       return false;
@@ -2842,7 +2959,7 @@ function createPongGame(mode) {
     getMeta() {
       return {
         canPause: state.status === "running" || state.status === "paused",
-        controlHint: "Hold W/S or Up/Down, or steer with the mouse. Space starts.",
+        controlHint: "Hold W/S or Up/Down, or drag on screen. Space starts.",
         controls: { up: { enabled: true, label: "Up" }, down: { enabled: true, label: "Down" }, left: { enabled: false, label: "—" }, right: { enabled: false, label: "—" } },
         controlPadHidden: false,
         isPaused: state.status === "paused",
@@ -2852,7 +2969,7 @@ function createPongGame(mode) {
         score: state.playerScore,
         scoreLabel: "You",
         status: state.status,
-        statusText: state.status === "ready" ? "CREDIT READY · PRESS START" : state.status === "game-over" ? (state.playerScore > state.aiScore ? "Match won. Rematch?" : "The machine took it. Rematch?") : "First to eleven."
+        statusText: state.status === "ready" ? "CREDIT READY · PRESS START" : state.status === "game-over" ? (state.playerScore > state.aiScore ? "Match won. Rematch?" : "The machine took it. Rematch?") : "First to seven."
       };
     },
     keydown,
@@ -2872,57 +2989,65 @@ function createPlatformerGame(mode) {
       accent: "#a6ff3d",
       accentColor: "#a6ff3d",
       timeLimit: 60000,
-      platformCount: 8,
-      gravity: 0.6
+      platformCount: 9,
+      gravity: 1600,
+      jumpVelocity: -630,
+      scrollPressure: 0
     },
     survival: {
       accent: "#ffb547",
       accentColor: "#ffb547",
       timeLimit: null,
-      platformCount: 12,
-      gravity: 0.5
+      platformCount: 11,
+      gravity: 1520,
+      jumpVelocity: -610,
+      scrollPressure: 14
     }
   }[mode.id];
 
   const width = viewport.width;
   const height = viewport.height;
-  const playerSize = 14;
+  const playerSize = 16;
   const platformHeight = 10;
+  const platformGapMin = 72;
+  const platformGapMax = 108;
 
   function generatePlatforms() {
     const platforms = [];
-    for (let i = 0; i < config.platformCount; i++) {
+    platforms.push({ x: 0, y: height - 18, width, active: true });
+    for (let i = 1; i <= config.platformCount; i++) {
       platforms.push({
-        x: randomInt(20, width - 80),
-        y: height - 40 - i * (height / config.platformCount),
-        width: randomInt(60, 100),
+        x: randomInt(16, width - 110),
+        y: height - 18 - i * Math.floor((height - 40) / config.platformCount),
+        width: randomInt(78, 128),
         active: true
       });
     }
-    platforms.push({ x: 0, y: height - 20, width, active: true });
     return platforms;
   }
 
   function createRunState(status = "ready") {
     return {
       playerX: width / 2,
-      playerY: height - 50,
-      playerVX: 0,
+      playerY: height - 60,
       playerVY: 0,
       platforms: generatePlatforms(),
       score: 0,
+      totalAscent: 0,
       status,
       time: config.timeLimit || 0,
-      onGround: true
+      onGround: false
     };
   }
 
   let state = createRunState();
   let keysPressed = {};
+  let touchHeld = { left: false, right: false, jump: false };
 
   function restart() {
     state = createRunState();
     keysPressed = {};
+    touchHeld = { left: false, right: false, jump: false };
   }
 
   function launch() {
@@ -2951,42 +3076,84 @@ function createPlatformerGame(mode) {
   function update(deltaMs) {
     if (state.status !== "running") return;
 
-    const deltaS = deltaMs / 1000;
+    const deltaS = Math.min(deltaMs / 1000, 0.05);
+
+    const goLeft = keysPressed["a"] || keysPressed["A"] || keysPressed["ArrowLeft"] || touchHeld.left;
+    const goRight = keysPressed["d"] || keysPressed["D"] || keysPressed["ArrowRight"] || touchHeld.right;
+    const goJump = keysPressed["w"] || keysPressed["W"] || keysPressed[" "] || keysPressed["ArrowUp"] || touchHeld.jump;
+
     let nextX = state.playerX;
-    if (keysPressed["a"] || keysPressed["A"] || keysPressed["ArrowLeft"]) nextX -= 250 * deltaS;
-    if (keysPressed["d"] || keysPressed["D"] || keysPressed["ArrowRight"]) nextX += 250 * deltaS;
+    if (goLeft) nextX -= 270 * deltaS;
+    if (goRight) nextX += 270 * deltaS;
     nextX = clamp(nextX, 0, width - playerSize);
 
-    let nextVY = state.playerVY + config.gravity;
+    let nextVY = state.playerVY + config.gravity * deltaS;
     let nextY = state.playerY + nextVY * deltaS;
     let onGround = false;
 
     for (const platform of state.platforms) {
-      if (platform.active && state.playerVY >= 0 && nextY + playerSize >= platform.y && nextY + playerSize <= platform.y + platformHeight + 5 && nextX + playerSize > platform.x && nextX < platform.x + platform.width) {
+      if (
+        platform.active &&
+        state.playerVY >= 0 &&
+        nextY + playerSize >= platform.y &&
+        nextY + playerSize <= platform.y + platformHeight + 10 &&
+        nextX + playerSize > platform.x &&
+        nextX < platform.x + platform.width
+      ) {
         nextY = platform.y - playerSize;
         nextVY = 0;
         onGround = true;
-        if (keysPressed["w"] || keysPressed["W"] || keysPressed[" "] || keysPressed["ArrowUp"]) {
-          nextVY = -15;
+        if (goJump) {
+          nextVY = config.jumpVelocity;
+          touchHeld.jump = false;
           SFX.ping();
         }
+        break;
       }
     }
 
-    if (nextY > height) {
+    // Camera: keep player from going above 40% of screen
+    let cameraShift = 0;
+    if (nextY < height * 0.40) {
+      cameraShift = height * 0.40 - nextY;
+      nextY = height * 0.40;
+    }
+
+    // Survival mode: platforms creep downward (adds pressure over time)
+    const pressureShift = config.scrollPressure * deltaS;
+    const totalShift = cameraShift + pressureShift;
+
+    let nextPlatforms = state.platforms.map((p) => ({ ...p, y: p.y + totalShift }));
+    nextPlatforms = nextPlatforms.filter((p) => p.y < height + 20);
+
+    // Spawn new platforms at the top as old ones scroll off
+    while (nextPlatforms.length < config.platformCount + 2) {
+      const topY = Math.min(...nextPlatforms.map((p) => p.y));
+      nextPlatforms.push({
+        x: randomInt(16, width - 110),
+        y: topY - randomInt(platformGapMin, platformGapMax),
+        width: randomInt(78, 128),
+        active: true
+      });
+    }
+
+    if (nextY + playerSize > height) {
       state = { ...state, status: "game-over" };
       SFX.gameOver();
       return;
     }
 
+    let nextTime = state.time;
     if (config.timeLimit) {
-      state = { ...state, time: state.time - deltaMs };
-      if (state.time <= 0) {
-        state = { ...state, status: "game-over" };
+      nextTime = state.time - deltaMs;
+      if (nextTime <= 0) {
+        state = { ...state, status: "game-over", time: 0 };
         SFX.gameOver();
         return;
       }
     }
+
+    const totalAscent = state.totalAscent + cameraShift;
 
     state = {
       ...state,
@@ -2994,7 +3161,10 @@ function createPlatformerGame(mode) {
       playerY: nextY,
       playerVY: nextVY,
       onGround,
-      score: Math.max(state.score, Math.floor((height - nextY) / 10))
+      platforms: nextPlatforms,
+      totalAscent,
+      score: Math.floor(totalAscent / 8),
+      time: nextTime
     };
   }
 
@@ -3003,16 +3173,16 @@ function createPlatformerGame(mode) {
     keysPressed[event.code] = true;
 
     if (event.code === "Space") {
-      if (state.status === "ready" || state.status === "game-over") {
-        return launch();
-      }
-      // Space is the jump key mid-run; pause lives on P and the button.
+      if (state.status === "ready" || state.status === "game-over") return launch();
       return true;
     }
 
-    if (event.key === "w" || event.key === "W" || event.key === "a" || event.key === "A" ||
-        event.key === "d" || event.key === "D" || event.code === "ArrowUp" ||
-        event.code === "ArrowLeft" || event.code === "ArrowRight") {
+    if (
+      event.key === "w" || event.key === "W" ||
+      event.key === "a" || event.key === "A" ||
+      event.key === "d" || event.key === "D" ||
+      event.code === "ArrowUp" || event.code === "ArrowLeft" || event.code === "ArrowRight"
+    ) {
       return true;
     }
     return false;
@@ -3023,49 +3193,66 @@ function createPlatformerGame(mode) {
     keysPressed[event.code] = false;
   }
 
-  function render(ctx) {
+  function render(ctx, time) {
     drawStageBackdrop(ctx, { accentColor: config.accentColor });
 
-    ctx.fillStyle = config.accentColor;
     ctx.shadowColor = config.accentColor;
-    ctx.shadowBlur = 12;
+    ctx.shadowBlur = 10;
+    ctx.fillStyle = config.accentColor;
 
     for (const platform of state.platforms) {
-      ctx.globalAlpha = platform.active ? 1 : 0.3;
-      ctx.fillRect(platform.x, platform.y, platform.width, platformHeight);
+      if (platform.y > -platformHeight && platform.y < height + platformHeight) {
+        ctx.globalAlpha = 1;
+        fillRoundedRect(ctx, platform.x, platform.y, platform.width, platformHeight, 3, config.accentColor);
+      }
     }
     ctx.globalAlpha = 1;
-
-    ctx.beginPath();
-    ctx.arc(state.playerX + playerSize / 2, state.playerY + playerSize / 2, playerSize, 0, Math.PI * 2);
-    ctx.fill();
     ctx.shadowBlur = 0;
 
+    // Player
+    ctx.shadowColor = config.accentColor;
+    ctx.shadowBlur = 16;
+    ctx.fillStyle = "#f4f7fb";
+    fillRoundedRect(ctx, state.playerX, state.playerY, playerSize, playerSize, 4, "#f4f7fb");
+    ctx.shadowBlur = 0;
+
+    // Height indicator on right edge
+    if (state.status === "running") {
+      const pct = 1 - (state.playerY / height);
+      ctx.fillStyle = `rgba(255,255,255,0.18)`;
+      ctx.fillRect(width - 4, 0, 4, height);
+      ctx.fillStyle = config.accentColor;
+      ctx.fillRect(width - 4, height - pct * height, 4, pct * height);
+    }
+
     if (state.status === "ready") {
-      drawOverlayCard(ctx, "Ready", "WASD or Arrows to move. Space to jump.", config.accent);
+      drawOverlayCard(ctx, "Ready", "A/D or Left/Right to move. W, Up, or Space to jump.", config.accent);
     } else if (state.status === "paused") {
       drawOverlayCard(ctx, "Paused", "Space to resume.", config.accent);
     } else if (state.status === "game-over") {
-      drawOverlayCard(ctx, "Game Over", "Space to try again.", config.accent);
+      drawOverlayCard(ctx, "Fell", "Space to try again.", config.accent);
     }
   }
 
   return {
     action(control) {
-      if (state.status !== "running") return false;
-      if (control === "up") {
-        keysPressed["w"] = true;
-        setTimeout(() => { keysPressed["w"] = false; }, 140);
-        return true;
+      if (state.status === "ready" || state.status === "game-over") {
+        if (control === "up") return launch();
       }
+      if (state.status !== "running") return false;
       if (control === "left") {
-        keysPressed["a"] = true;
-        setTimeout(() => { keysPressed["a"] = false; }, 160);
+        touchHeld.left = true;
+        setTimeout(() => { touchHeld.left = false; }, 200);
         return true;
       }
       if (control === "right") {
-        keysPressed["d"] = true;
-        setTimeout(() => { keysPressed["d"] = false; }, 160);
+        touchHeld.right = true;
+        setTimeout(() => { touchHeld.right = false; }, 200);
+        return true;
+      }
+      if (control === "up") {
+        touchHeld.jump = true;
+        setTimeout(() => { touchHeld.jump = false; }, 160);
         return true;
       }
       return false;
@@ -3073,17 +3260,29 @@ function createPlatformerGame(mode) {
     getMeta() {
       return {
         canPause: state.status === "running" || state.status === "paused",
-        controlHint: "A/D or arrows move. W or Space jumps. P pauses.",
-        controls: { up: { enabled: true, label: "Jump" }, down: { enabled: false, label: "—" }, left: { enabled: true, label: "Left" }, right: { enabled: true, label: "Right" } },
+        controlHint: "Left/Right to move, Up or Space to jump. Tap Up to launch.",
+        controls: {
+          up: { enabled: true, label: "Jump" },
+          down: { enabled: false, label: "—" },
+          left: { enabled: true, label: "Left" },
+          right: { enabled: true, label: "Right" }
+        },
         controlPadHidden: false,
         isPaused: state.status === "paused",
         metricLabel: config.timeLimit ? "Time" : "Height",
-        metricValue: config.timeLimit ? `${Math.max(0, Math.floor(state.time / 1000))}s` : `${state.score}m`,
+        metricValue: config.timeLimit ? `${Math.max(0, Math.floor(state.time / 1000))}s` : `${state.score}`,
         noteText: mode.summary,
         score: state.score,
-        scoreLabel: "Height",
+        scoreLabel: "Score",
         status: state.status,
-        statusText: state.status === "ready" ? "CREDIT READY · PRESS START" : state.status === "game-over" ? "Fell too far. R restarts." : "Climb. The score is altitude."
+        statusText:
+          state.status === "ready"
+            ? "CREDIT READY · PRESS START"
+            : state.status === "game-over"
+              ? "Fell off the edge. Space to try again."
+              : config.timeLimit
+                ? "Climb as high as you can before time runs out."
+                : "The platforms rise. Keep climbing or fall."
       };
     },
     keydown,
